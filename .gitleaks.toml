@@ -1,0 +1,13 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Synthetic credentials used only by tests, CI, and documentation"
+regexTarget = "match"
+regexes = [
+  '''test-api-key-0123456789abcdef''',
+  '''measurement-api-key-0123456789''',
+  '''ci-rest-key-0123456789abcdef''',
+  '''ci-mcp-key-0123456789abcdef''',
+  '''at-least-24-characters-long''',
+]
