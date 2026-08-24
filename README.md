@@ -12,7 +12,8 @@ sağlayıcısını zorunlu kılmaz.
 
 - PDF, Office ve metin belgeleri için tek, kontrollü bir erişim yüzeyi sağlar.
 - MarkItDown çıktısını bir kez üretip diskte önbelleğe alır.
-- Arama sonuçlarını `top_k` ve `max_chars` bütçeleriyle sınırlar.
+- FTS5/BM25 ile relevance sıralı arama yapar; sonuçları `top_k`, `max_chars` ve
+  `max_tokens` bütçeleriyle sınırlar.
 - Ham dosyaları dosya adıyla değil UUID ile saklar.
 - Düşük kaynaklı tek sunucuda SQLite ve yerel volume'larla çalışır.
 - Arama, parser, storage ve repository sınırları ileride pgvector/Qdrant/S3/PostgreSQL
@@ -24,18 +25,22 @@ sağlayıcısını zorunlu kılmaz.
 REST upload
     │
     ├─ extension + MIME + signature + size validation
-    ├─ UUID path + SHA-256 ── duplicate? ── reuse cached record
+    ├─ UUID path + SHA-256 ── unchanged? ── reuse cached record
     │
-    └─ MarkItDown ──> cached Markdown ──> heading-aware chunks
+    └─ MarkItDown ──> cached Markdown ──> token-aware, metadata-carrying chunks
                                             │
-                                            └─> SQLite metadata + keyword search
+                                            └─> SQLite metadata + FTS5/BM25 index
                                                         │
-                                  bounded REST responses / read-only MCP tools
+                              budget + dedup + cursor / read-only MCP tools
 ```
 
 Katmanlar `api`, `services`, `repositories`, `parsers`, `storage`, `chunking`, `mcp`,
 `models`, `schemas` ve `core` altında ayrılmıştır. MVP senkron olarak işler: upload isteği,
 dönüşüm tamamlandığında `ready` döner; başarısız kayıtlar `failed` durumuyla saklanır.
+SHA-256 aynıysa cache kaydı doğrudan kullanılır. Aynı dosya adı farklı içerikle yeniden
+yüklendiğinde mevcut `document_id` korunur; yeni dönüşüm başarılı olduktan sonra eski Markdown,
+chunk ve FTS kayıtları tek transaction ile değiştirilir. Başarısız yenileme hazır eski sürümü
+bozmaz.
 
 ## Desteklenen formatlar
 
@@ -52,6 +57,10 @@ dönüşüm tamamlandığında `ready` döner; başarısız kayıtlar `failed` d
 Format bağımlılığı kurulu MarkItDown adaptöründe işlenemiyorsa API kontrollü bir
 `conversion_failed` cevabı döndürür. Şifreli, bozuk veya yalnızca taranmış belgeler bu kapsama
 girebilir.
+
+Chunk'lar Markdown başlığını ve dönüştürücü çıktısında bulunuyorsa sayfa/slayt/sheet bilgisini
+taşır. PPTX slayt işaretleri ve XLSX sheet başlıkları korunur. PDF dönüştürücü sayfa işareti
+üretmiyorsa uygulama bir sayfa numarası uydurmaz.
 
 ## Docker ile kurulum
 
@@ -103,6 +112,21 @@ ruff check .
 ruff format --check .
 ```
 
+Önemli retrieval ayarları:
+
+| Ortam değişkeni | Varsayılan | Açıklama |
+|---|---:|---|
+| `PDG_CHUNK_SIZE_TOKENS` | `500` | Hedef yaklaşık chunk token sayısı |
+| `PDG_CHUNK_OVERLAP_TOKENS` | `50` | Ardışık token penceresi overlap'i |
+| `PDG_MIN_CHUNK_TOKENS` | `40` | Birleştirilmesi tercih edilen küçük chunk eşiği |
+| `PDG_DEFAULT_RESPONSE_MAX_TOKENS` | `2000` | Parametre verilmezse içerik bütçesi |
+| `PDG_MAX_RESPONSE_TOKENS` | `6000` | İstemcinin aşamayacağı kesin token üst sınırı |
+| `PDG_MAX_RESPONSE_CHARS` | `24000` | İstemcinin aşamayacağı kesin karakter üst sınırı |
+| `PDG_MAX_NEIGHBOR_WINDOW` | `1` | Bir eşleşmenin iki yönündeki azami komşu sayısı |
+
+Token sayıları sağlayıcıya özgü tokenizer değil, yerel ve deterministik bir tahmindir. Böylece
+ürün bir LLM'e bağlanmadan bütçe uygulayabilir; gerçek model faturalama token'ı farklı olabilir.
+
 ## REST API
 
 `GET /health` dışındaki REST ve MCP istekleri `X-API-Key` ister. Örneklerde:
@@ -144,7 +168,8 @@ Belge içinde arama ve silme:
 ```bash
 curl -G -H "X-API-Key: ${PDG_CLIENT_API_KEY}" \
   --data-urlencode 'q=contract termination period' \
-  --data 'top_k=5' --data 'max_chars=8000' \
+  --data 'top_k=5' --data 'max_chars=8000' --data 'max_tokens=1200' \
+  --data 'neighbor_window=0' \
   'http://127.0.0.1:8000/api/v1/documents/DOCUMENT_ID/search'
 
 curl -X DELETE -H "X-API-Key: ${PDG_CLIENT_API_KEY}" \
@@ -153,6 +178,11 @@ curl -X DELETE -H "X-API-Key: ${PDG_CLIENT_API_KEY}" \
 
 OpenAPI arayüzü `/docs` adresindedir. Endpoint'ler arayüz açık olsa da API anahtarı olmadan
 çalışmaz.
+
+Arama cevabı relevance sıralı `items`, iki bütçenin uygulanmış değerlerini, ölçüm alanlarını ve
+devam varsa opaque `next_cursor` değerini içerir. Sonraki sayfa için aynı query ve belgeyle bu
+cursor'ı `cursor=...` olarak gönderin. Cursor farklı bir sorguda kullanılırsa kontrollü
+`invalid_cursor` hatası döner.
 
 ## MCP bağlantısı
 
@@ -191,6 +221,59 @@ Araçlar:
 Araçların tamamı salt okunurdur. Upload ve delete yalnızca REST'tedir. Ham dosya döndüren MCP
 aracı yoktur.
 
+Önerilen araç akışı:
+
+```text
+AI aracı
+  → search_document(query, top_k, max_tokens)
+  → BM25 relevance sıralı chunk'lar
+  → karakter + yaklaşık token bütçesi
+  → document/chunk/position kaynak bilgileri
+  → gerekirse next_cursor veya sınırlı get_document_section
+```
+
+Örnek `search_document` argümanları:
+
+```json
+{
+  "document_id": "DOCUMENT_UUID",
+  "query": "termination notice period",
+  "top_k": 3,
+  "max_chars": 4000,
+  "max_tokens": 600,
+  "neighbor_window": 0
+}
+```
+
+Her retrieval item'ı aynı kaynak sözleşmesini kullanır:
+
+```json
+{
+  "document_id": "DOCUMENT_UUID",
+  "document_name": "agreement.pdf",
+  "chunk_id": "CHUNK_UUID",
+  "heading": "Termination",
+  "position": {
+    "chunk_index": 7,
+    "char_start": 12840,
+    "char_end": 14610,
+    "page_number": null,
+    "slide_number": null,
+    "sheet_name": null
+  },
+  "score": 0.00001423,
+  "content": "...bounded relevant content...",
+  "content_length": 30,
+  "token_count": 7,
+  "relation": "match"
+}
+```
+
+`neighbor_window` varsayılan olarak `0`'dır. Açıldığında önceki/sonraki chunk'lar da aynı toplam
+`top_k`, `max_chars` ve `max_tokens` bütçesinden harcar. `next_cursor`, aynı araç ve sorguyla
+sonraki relevance sayfasını almak içindir. `get_document_section` da cursor destekler ve tam
+belge endpoint'i gibi davranmaz.
+
 ## Oracle Cloud Ubuntu özeti
 
 1. Ubuntu ARM64 veya AMD64 instance oluşturun; boot volume için düzenli snapshot planlayın.
@@ -215,17 +298,44 @@ ile doğrudan MCP kullanılacaksa bu IP'yi `PDG_ALLOWED_HOSTS` içine ekleyin.
 - MarkItDown yalnızca saklanan yerel UUID yolunda çalışır; MVP URL kabul etmez.
 - CORS varsayılan olarak kapalıdır. Gerekiyorsa kesin origin listesi verin.
 - MCP DNS-rebinding koruması exact Host allowlist ile çalışır.
-- Silme işlemi raw dosyayı, Markdown cache'i ve foreign-key cascade ile chunk kayıtlarını siler.
+- Silme işlemi raw dosyayı, Markdown cache'i, chunk kayıtlarını ve FTS satırlarını siler.
 - Public kurulumda TLS, firewall/rate limit ve düzenli yedekleme hâlâ operatör sorumluluğudur.
 
 ## Token tasarrufu
 
 - SHA-256 aynı dosyayı ikinci kez dönüştürmeyi engeller.
 - Markdown bir kez dönüştürülür ve volume'da önbelleğe alınır.
-- Başlık-aware chunk'lar arama sırasında sıralanır; sadece ilgili metin döner.
-- `top_k`, `max_chars`, `offset` ve `limit` sunucu tarafında üst sınırlara sahiptir.
+- Başlıkları koruyan token-aware chunk'lar FTS5/BM25 ile sıralanır; sadece ilgili metin döner.
+- Başlık eşleşmesi içerik eşleşmesine göre daha yüksek BM25 ağırlığı alır.
+- `top_k`, `max_chars`, `max_tokens`, cursor, `offset` ve `limit` sunucu tarafında üst
+  sınırlara sahiptir.
+- Büyük ölçüde örtüşen veya aynı chunk'lar bir MCP sayfasında tekrar edilmez.
 - MCP'nin tam belge veya ham dosya döndüren bir varsayılan aracı yoktur.
-- Chunk overlap düşük ve `PDG_CHUNK_OVERLAP_CHARS` ile ayarlanabilir.
+- Chunk overlap düşük ve `PDG_CHUNK_OVERLAP_TOKENS` ile ayarlanabilir.
+
+### Tekrarlanabilir ölçüm
+
+Aşağıdaki değerler 24 Ağustos 2026 tarihinde, repodaki deterministik sentetik belgeyle ve
+varsayılan `500/50` chunk ayarlarıyla gerçek upload → MarkItDown cache → FTS5 → REST retrieval
+akışından ölçülmüştür. Token değerleri uygulamanın yaklaşık token estimator'ına aittir; başka
+belgeler veya model tokenizer'ları için genellenmez.
+
+```bash
+.venv/bin/python scripts/measure_retrieval.py
+```
+
+| Ölçüm | Gözlenen değer |
+|---|---:|
+| Tam belgenin yaklaşık token sayısı | 5920 |
+| Retrieval'ın döndürdüğü yaklaşık token sayısı | 240 |
+| Döndürülen chunk sayısı | 1 |
+| Arama süresi | 4.279 ms |
+| Cache kullanıldı | evet |
+| Bu fixture için ölçülen token azalması | %95.95 |
+
+Arama süresi donanım, SQLite cache durumu ve container yüküne göre değişir. Ölçüm komutu aynı
+tabloyla birlikte güncel sonucu JSON olarak üretir; README yüzdesi yalnızca yukarıdaki koşullar
+için bir gözlemdir.
 
 ## Kısa ADR
 
@@ -249,10 +359,18 @@ değildir.
 MCP önce liste/metadata/arama, sonra bounded section akışını teşvik eder. Upload/silme REST'te
 kalarak LLM aracının mutasyon yüzeyi kapalı tutulur.
 
+### ADR-004 — Yerel FTS5 ve model-bağımsız token tahmini
+
+Sprint 2 araması harici bir vector servisi yerine SQLite FTS5'in `unicode61` tokenizer'ı ve
+başlık ağırlıklı BM25 skoru üzerine kuruludur. `SearchIndex` sınırı ileride hybrid/semantic bir
+adaptör eklenebilmesi için servis katmanından ayrıdır. Token bütçesi sağlayıcı SDK'sına bağlı
+olmayan deterministik bir tahminle uygulanır; ürünün OpenAI, Claude veya başka bir LLM'e zorunlu
+bağımlılığı yoktur.
+
 ## Yol haritası
 
 - Background job/worker ve işlem progress'i
-- SQLite FTS5 adaptörü; ardından opsiyonel pgvector/Qdrant semantic search
+- Opsiyonel hybrid/semantic search ve pgvector/Qdrant adaptörleri
 - PostgreSQL repository ve çoklu instance profili
 - S3/MinIO uyumlu opsiyonel storage adaptörü
 - OCR için tamamen yerel, opsiyonel adapter
