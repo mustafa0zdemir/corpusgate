@@ -21,6 +21,10 @@ build/
 data/*
 !data/.gitkeep
 state/
+/documents/
+examples/generated/
 backups/
 secrets/
+models/
+vector-data/
 *.tar.gz

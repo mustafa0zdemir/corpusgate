@@ -1,0 +1,6 @@
+Synthetic retrieval notes
+
+Lexical search ranks exact phrases with SQLite FTS5. Semantic search uses a local multilingual
+model. Hybrid retrieval combines independent rankings and returns each chunk only once.
+
+Response character and estimated-token budgets are enforced after ranking.

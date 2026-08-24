@@ -1,6 +1,6 @@
 # Oracle Cloud Ubuntu production deployment
 
-Bu rehber Private Document Gateway `0.4.x` sürümünü tek Oracle Cloud Ubuntu VM üzerinde kalıcı
+Bu rehber Private Document Gateway `0.1.x` sürümünü tek Oracle Cloud Ubuntu VM üzerinde kalıcı
 ve güvenli çalıştırır. Önerilen erişim Tailscale'dir. Public domain yalnızca gerçekten gerekliyse
 Caddy profiliyle açılmalıdır.
 
@@ -61,6 +61,7 @@ sudo install -d -o 10001 -g 10001 -m 0700 \
   /srv/private-document-gateway/cache \
   /srv/private-document-gateway/database \
   /srv/private-document-gateway/backups
+install -d -m 0750 /srv/private-document-gateway/inbox
 install -d -m 0700 secrets
 ```
 
@@ -85,6 +86,7 @@ Docker secret dosyasında kalır. Production `.env` için en az şu alanları d�
 PDG_API_KEY=REPLACE_WITH_REST_KEY
 PDG_MCP_AUTH_TOKENS=
 PDG_MCP_AUTH_TOKEN_HOST_FILE=./secrets/mcp_auth_token
+PDG_INBOX_HOST_PATH=/srv/private-document-gateway/inbox
 PDG_DOCUMENTS_HOST_PATH=/srv/private-document-gateway/documents
 PDG_CACHE_HOST_PATH=/srv/private-document-gateway/cache
 PDG_DATABASE_HOST_PATH=/srv/private-document-gateway/database
@@ -109,6 +111,7 @@ docker compose -f compose.prod.yaml up -d gateway
 docker compose -f compose.prod.yaml ps
 curl --fail http://127.0.0.1:8000/health
 curl --fail http://127.0.0.1:8000/ready
+docker compose -f compose.prod.yaml exec -T gateway private-document-gateway-admin doctor
 ```
 
 Beklenen cevaplar sırasıyla `{"status":"ok"}` ve `{"status":"ready"}` biçimindedir. `health`
@@ -187,11 +190,13 @@ Güncelleme:
 
 ```bash
 docker compose -f compose.prod.yaml stop gateway
-docker compose -f compose.prod.yaml run --rm --no-deps gateway private-document-gateway-backup
+docker compose -f compose.prod.yaml run --rm --no-deps gateway \
+  private-document-gateway-admin backup
 git pull --ff-only
 docker compose -f compose.prod.yaml build --pull gateway
 docker compose -f compose.prod.yaml up -d gateway
 curl --fail http://127.0.0.1:8000/ready
+docker compose -f compose.prod.yaml exec -T gateway private-document-gateway-admin status
 ```
 
 ## 9. Backup, restore ve cache recovery
@@ -200,7 +205,8 @@ Tutarlı uygulama snapshot'ı için yazmaları durdurup one-off bakım komutunu 
 
 ```bash
 docker compose -f compose.prod.yaml stop gateway
-docker compose -f compose.prod.yaml run --rm --no-deps gateway private-document-gateway-backup
+docker compose -f compose.prod.yaml run --rm --no-deps gateway \
+  private-document-gateway-admin backup
 docker compose -f compose.prod.yaml start gateway
 sudo tar -tzf /srv/private-document-gateway/backups/pdg-backup-TIMESTAMP.tar.gz
 ```
@@ -214,8 +220,8 @@ Restore mevcut kalıcı veriyi değiştirir; gateway kapalıyken açık onay bay
 ```bash
 docker compose -f compose.prod.yaml stop gateway
 docker compose -f compose.prod.yaml run --rm --no-deps gateway \
-  private-document-gateway-backup \
-  --restore /backups/pdg-backup-TIMESTAMP.tar.gz --confirm-restore
+  private-document-gateway-admin restore \
+  /backups/pdg-backup-TIMESTAMP.tar.gz --confirm-restore
 docker compose -f compose.prod.yaml start gateway
 curl --fail http://127.0.0.1:8000/ready
 ```

@@ -11,8 +11,11 @@ __pycache__
 htmlcov
 data
 state
+/documents
 backups
 secrets
+models
+vector-data
 *.db
 *.db-*
 *.sqlite*

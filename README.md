@@ -1,448 +1,331 @@
 # Private Document Gateway
 
-Private Document Gateway, belgeleri üçüncü taraf bir belge veya LLM servisine göndermeden
-Markdown'a dönüştüren, parçalayan, indeksleyen ve yalnızca gerekli bölümleri REST API ile
-MCP üzerinden sunan self-hosted bir belge geçididir.
+**An LLM-ready private document gateway powered by MarkItDown and MCP.**
 
-Ürünün temel sözü: **Belge içerikleri sizde kalır; LLM araçları varsayılan olarak tam belgeyi
-değil, sınırlandırılmış ilgili parçaları alır.** Uygulama cevap üretmez ve herhangi bir LLM
-sağlayıcısını zorunlu kılmaz.
+Convert, index and retrieve private documents for AI tools without sending document content to
+third-party services.
 
-## Neden?
+Private Document Gateway is a general-purpose, self-hosted Document MCP Server for individuals and
+teams that need controlled AI-tool access to documents on their own infrastructure. MarkItDown
+converts supported files into reusable Markdown. The gateway then chunks and indexes that Markdown,
+and MCP returns only the relevant, source-attributed chunks under server-enforced budgets.
 
-- PDF, Office ve metin belgeleri için tek, kontrollü bir erişim yüzeyi sağlar.
-- MarkItDown çıktısını bir kez üretip diskte önbelleğe alır.
-- FTS5/BM25 ile relevance sıralı lexical arama yapar; isteğe bağlı yerel embedding + Qdrant
-  profiliyle semantic ve RRF tabanlı hybrid retrieval sunar.
-- Ham dosyaları dosya adıyla değil UUID ile saklar.
-- Düşük kaynaklı tek sunucuda SQLite ve yerel volume'larla çalışır.
-- Arama, parser, storage ve repository sınırları ileride pgvector/Qdrant/S3/PostgreSQL
-  adaptörlerine açıktır.
+Self-hosting keeps source documents, generated Markdown, queries, metadata, and indexes under the
+operator's control. Token reduction comes from bounded retrieval and chunk selection—not from
+MarkItDown alone. This project is **not** a chatbot, an LLM answer generator, a contract-analysis
+product, a SaaS platform, or a user-facing document panel.
 
-## Mimari akış
+## Features
+
+- PDF, DOCX, PPTX, XLSX, TXT, Markdown, and HTML conversion through Microsoft MarkItDown.
+- Persistent Markdown cache, token-aware heading-preserving chunks, and SHA-256 deduplication.
+- SQLite FTS5/BM25 lexical search in the lightweight default installation.
+- Optional CPU-only multilingual semantic search and RRF hybrid retrieval using local embeddings.
+- Bounded MCP responses with source/position metadata, cursors, deduplication, and neighbor limits.
+- REST API-key and MCP Bearer authentication, safe UUID storage, path/symlink protections, rate
+  limits, and structured content-safe logs.
+- Hardened Docker Compose deployment for AMD64/ARM64, Oracle Cloud, Tailscale, or Caddy HTTPS.
+- Setup helper, operational doctor/scan/reindex/backup commands, versioned SQLite schema, and CI.
+
+## How it works
 
 ```text
-REST upload
-    │
-    ├─ extension + MIME + signature + size validation
-    ├─ UUID path + SHA-256 ── unchanged? ── reuse cached record
-    │
-    └─ MarkItDown ──> cached Markdown ──> token-aware, metadata-carrying chunks
-                                            │
-                                            ├─> SQLite metadata + FTS5/BM25 index
-                                            └─> optional local embedding + Qdrant
-                                                        │
-                              budget + dedup + cursor / read-only MCP tools
+REST upload or read-only inbox scan
+        │
+        ├─ type, signature, size, path, and free-space validation
+        ├─ UUID storage + SHA-256 ── unchanged? ── reuse cached/indexed record
+        │
+        └─ MarkItDown ──> persistent Markdown ──> token-aware chunks
+                                                   │
+                              ┌────────────────────┴────────────────────┐
+                              │                                         │
+                    SQLite FTS5 / BM25                      optional local embeddings
+                              │                                  + private Qdrant
+                              └────────────────────┬────────────────────┘
+                                                   │
+                               ranking → dedup → token/char budget → MCP
 ```
 
-Katmanlar `api`, `services`, `repositories`, `parsers`, `storage`, `chunking`, `mcp`,
-`models`, `schemas` ve `core` altında ayrılmıştır. MVP senkron olarak işler: upload isteği,
-dönüşüm tamamlandığında `ready` döner; başarısız kayıtlar `failed` durumuyla saklanır.
-SHA-256 aynıysa cache kaydı doğrudan kullanılır. Aynı dosya adı farklı içerikle yeniden
-yüklendiğinde mevcut `document_id` korunur; yeni dönüşüm başarılı olduktan sonra eski Markdown,
-chunk ve FTS kayıtları tek transaction ile değiştirilir. Başarısız yenileme hazır eski sürümü
-bozmaz.
+The code keeps parser, storage, repository, chunking, embedding, vector-store, and retrieval
+contracts behind interfaces without turning the single-server product into a distributed system.
+Documents remain the primary data source; Markdown and vector indexes can be rebuilt.
 
-Lexical arama her image'da bulunur ve production varsayılanıdır. Semantic bağımlılıklar yalnızca
-`semantic-runtime` target'ında bulunur. `EmbeddingProvider`, `VectorStore` ve
-`RetrievalStrategy` sınırları iş kurallarını FastEmbed, Qdrant veya tek bir modele bağlamaz.
+## Supported formats
 
-## Desteklenen formatlar
-
-| Format | Uzantı | Not |
+| Format | Extensions | Notes |
 |---|---|---|
-| PDF | `.pdf` | Metin tabanlı PDF; MVP'de harici OCR yoktur |
-| Word | `.docx` | Office archive yapısı doğrulanır |
-| PowerPoint | `.pptx` | Office archive yapısı doğrulanır |
-| Excel | `.xlsx` | Office archive yapısı doğrulanır |
-| Text | `.txt` | UTF-8 |
-| Markdown | `.md`, `.markdown` | UTF-8 |
-| HTML | `.html`, `.htm` | UTF-8; URL'den içerik alma yoktur |
+| PDF | `.pdf` | Text-based PDFs; no external OCR in `0.1.0`. |
+| Word | `.docx` | Office archive structure is checked. |
+| PowerPoint | `.pptx` | Slide markers are preserved when MarkItDown emits them. |
+| Excel | `.xlsx` | Sheet headings are carried into chunk metadata when available. |
+| Text | `.txt` | UTF-8. |
+| Markdown | `.md`, `.markdown` | UTF-8 and heading aware. |
+| HTML | `.html`, `.htm` | UTF-8; fetching remote URLs is intentionally unsupported. |
 
-Format bağımlılığı kurulu MarkItDown adaptöründe işlenemiyorsa API kontrollü bir
-`conversion_failed` cevabı döndürür. Şifreli, bozuk veya yalnızca taranmış belgeler bu kapsama
-girebilir.
+Encrypted, corrupted, scanned-image-only, or converter-unsupported files fail safely without
+stopping other documents.
 
-Chunk'lar Markdown başlığını ve dönüştürücü çıktısında bulunuyorsa sayfa/slayt/sheet bilgisini
-taşır. PPTX slayt işaretleri ve XLSX sheet başlıkları korunur. PDF dönüştürücü sayfa işareti
-üretmiyorsa uygulama bir sayfa numarası uydurmaz.
+## Quick start
 
-## Docker ile kurulum
-
-Gerekenler: Docker Engine ve Compose v2.
+Requirements: Docker Engine with Compose v2 and OpenSSL. Host Python is not required.
 
 ```bash
 git clone https://github.com/mustafa0zdemir/private-document-gateway.git
 cd private-document-gateway
-cp .env.example .env
-openssl rand -hex 32
-# REST için PDG_API_KEY, MCP için farklı bir PDG_MCP_AUTH_TOKENS değeri üretin.
-docker compose up -d --build
-docker compose ps
-curl http://127.0.0.1:8000/health
+./pdg init
+./pdg up
+curl --fail http://127.0.0.1:8000/health
+./pdg doctor
 ```
 
-Documents, Markdown cache, SQLite veritabanı ve backup çıktıları ayrı volume'larda kalıcıdır. Container
-UID `10001` ile, capability olmadan, read-only root filesystem ve yazılabilir geçici `/tmp`
-ile çalışır. Kullanılan Python slim tabanı ve bağımlılıklar AMD64/ARM64 için uygundur.
+`./pdg init` creates persistent/inbox folders, copies `.env.example` only when `.env` does not
+exist, generates separate random REST/MCP credentials without printing them, checks Docker/Compose
+and the selected port, and validates Compose. It never overwrites an existing `.env`.
 
-Güncelleme:
+The equivalent manual flow is to copy `.env.example` to `.env`, replace both credential
+placeholders with different `openssl rand -hex 32` values, create `documents/`, and run
+`docker compose up -d`. Never commit `.env`.
+
+Optional local semantic/hybrid retrieval is also one operation after initialization:
 
 ```bash
-git pull
-docker compose up -d --build
+./pdg init --semantic
+./pdg up --semantic
 ```
 
-Volume'ları silmek belge verisini kalıcı olarak siler; normal güncellemede `docker compose down
--v` kullanmayın.
+The first semantic start downloads the model into a persistent cache and then starts the gateway
+offline with Qdrant on the internal Docker network. Later starts reuse both model and vector
+volumes. The lexical installation does not install or run either semantic component.
 
-## Yerel geliştirme
+## Add documents
 
-Python 3.12 ile:
+The simplest operator workflow uses the read-only host inbox:
 
 ```bash
-python3.12 -m venv .venv
-source .venv/bin/activate
-pip install -e '.[dev]'
-cp .env.example .env
-# .env içindeki API anahtarını değiştirin.
-uvicorn app.main:app --reload
+cp examples/documents/* documents/
+./pdg scan
+./pdg list-documents
 ```
 
-Semantic geliştirme için `pip install -e '.[semantic,dev]'` kullanın.
+The scan skips hidden/system/temporary files, unsupported types, directories, and symlinks. Input
+files remain in `documents/`; private UUID copies are stored in the persistent source volume.
+For a complete lexical→semantic/hybrid→MCP walkthrough, use the
+[synthetic demo](docs/demo.md).
 
-Test ve kalite kontrolleri:
-
-```bash
-pytest --cov=app
-ruff check .
-ruff format --check .
-```
-
-Önemli retrieval ayarları:
-
-| Ortam değişkeni | Varsayılan | Açıklama |
-|---|---:|---|
-| `PDG_CHUNK_SIZE_TOKENS` | `500` | Hedef yaklaşık chunk token sayısı |
-| `PDG_CHUNK_OVERLAP_TOKENS` | `50` | Ardışık token penceresi overlap'i |
-| `PDG_MIN_CHUNK_TOKENS` | `40` | Birleştirilmesi tercih edilen küçük chunk eşiği |
-| `PDG_DEFAULT_RESPONSE_MAX_TOKENS` | `2000` | Parametre verilmezse içerik bütçesi |
-| `PDG_MAX_RESPONSE_TOKENS` | `6000` | İstemcinin aşamayacağı kesin token üst sınırı |
-| `PDG_MAX_RESPONSE_CHARS` | `24000` | İstemcinin aşamayacağı kesin karakter üst sınırı |
-| `PDG_MAX_NEIGHBOR_WINDOW` | `1` | Bir eşleşmenin iki yönündeki azami komşu sayısı |
-| `PDG_DEFAULT_RETRIEVAL_MODE` | `lexical` | Parametre verilmediğinde güvenli production modu |
-| `PDG_SEMANTIC_ENABLED` | `false` | Yerel embedding/vector özelliğini açar |
-
-Token sayıları sağlayıcıya özgü tokenizer değil, yerel ve deterministik bir tahmindir. Böylece
-ürün bir LLM'e bağlanmadan bütçe uygulayabilir; gerçek model faturalama token'ı farklı olabilir.
-
-## REST API
-
-REST endpoint'leri `X-API-Key` ister. `/health` ve `/ready` kimlik doğrulaması olmadan yalnızca
-durum döndürür. Örneklerde:
+REST upload is available for applications:
 
 ```bash
-export PDG_CLIENT_API_KEY='your-.env-value'
-```
-
-Belge yükleme:
-
-```bash
-curl -X POST http://127.0.0.1:8000/api/v1/documents \
+export PDG_CLIENT_API_KEY='value-from-your-env'
+curl --fail -X POST http://127.0.0.1:8000/api/v1/documents \
   -H "X-API-Key: ${PDG_CLIENT_API_KEY}" \
-  -F 'file=@./example.pdf'
+  -F 'file=@examples/documents/private-network-guide.md'
 ```
 
-Liste ve metadata:
+REST also provides paginated metadata, Markdown, chunks, lexical search, and deletion under
+`/api/v1/documents`. Interactive OpenAPI documentation is at `/docs`; protected operations still
+require `X-API-Key`.
 
-```bash
-curl -H "X-API-Key: ${PDG_CLIENT_API_KEY}" \
-  'http://127.0.0.1:8000/api/v1/documents?offset=0&limit=20'
+## Connect an MCP client
 
-curl -H "X-API-Key: ${PDG_CLIENT_API_KEY}" \
-  'http://127.0.0.1:8000/api/v1/documents/DOCUMENT_ID'
+The remote endpoint is `https://YOUR_PRIVATE_OR_PUBLIC_HOST/mcp` and every MCP request needs:
+
+```http
+Authorization: Bearer YOUR_MCP_TOKEN
 ```
 
-Sayfalı Markdown ve chunk okuma:
+Use Tailscale Serve as the recommended private route. Caddy HTTPS is the public alternative; the
+gateway port remains bound to host loopback in both cases. See the verified field mapping,
+Inspector command, Tailscale/HTTPS examples, and troubleshooting in
+[the MCP connection guide](docs/mcp-connection.md). Do not copy an unverified client-specific JSON
+wrapper or save a token in source control.
 
-```bash
-curl -H "X-API-Key: ${PDG_CLIENT_API_KEY}" \
-  'http://127.0.0.1:8000/api/v1/documents/DOCUMENT_ID/markdown?offset=0&max_chars=8000'
+## MCP tools
 
-curl -H "X-API-Key: ${PDG_CLIENT_API_KEY}" \
-  'http://127.0.0.1:8000/api/v1/documents/DOCUMENT_ID/chunks?offset=0&limit=20'
-```
+| Tool | Purpose | Limits and behavior |
+|---|---|---|
+| `list_documents` | Discover metadata without text. | `offset`, server-capped `limit`, `has_more`. |
+| `get_document_metadata` | Inspect one source/status/cache record. | Returns no document content. |
+| `search_documents` | Search when the source document is unknown. | Mode/filters/top-k/budgets/cursor. |
+| `search_document` | Search one known document. | Optional limited neighbors. |
+| `get_relevant_chunks` | Build a small context set from an allowlist. | Deduplicated and budgeted. |
+| `get_document_section` | Read consecutive chunks after locating a position. | Chunk cursor and hard budgets; never raw file. |
+| `refresh_document_index` | Idempotently repair one stored document's lexical/optional vector index. | Returns maintenance counts, no content; does not upload/delete/reconvert. |
 
-Belge içinde arama ve silme:
+Retrieval items consistently include `document_id`, `document_name`, `chunk_id`, `heading`,
+`position`, relevance/rank fields, bounded `content`, `content_length`, and retrieval-mode
+metadata. Empty searches return an empty `items` list, applied budgets, metrics, and no cursor.
+Invalid modes, cursors, filters, document IDs, or over-limit values produce controlled tool errors.
+Upload and delete remain REST-only.
 
-```bash
-curl -G -H "X-API-Key: ${PDG_CLIENT_API_KEY}" \
-  --data-urlencode 'q=contract termination period' \
-  --data 'top_k=5' --data 'max_chars=8000' --data 'max_tokens=1200' \
-  --data 'neighbor_window=0' \
-  'http://127.0.0.1:8000/api/v1/documents/DOCUMENT_ID/search'
-
-curl -X DELETE -H "X-API-Key: ${PDG_CLIENT_API_KEY}" \
-  'http://127.0.0.1:8000/api/v1/documents/DOCUMENT_ID'
-```
-
-OpenAPI arayüzü `/docs` adresindedir. Endpoint'ler arayüz açık olsa da API anahtarı olmadan
-çalışmaz.
-
-Arama cevabı relevance sıralı `items`, iki bütçenin uygulanmış değerlerini, ölçüm alanlarını ve
-devam varsa opaque `next_cursor` değerini içerir. Sonraki sayfa için aynı query ve belgeyle bu
-cursor'ı `cursor=...` olarak gönderin. Cursor farklı bir sorguda kullanılırsa kontrollü
-`invalid_cursor` hatası döner.
-
-## MCP bağlantısı
-
-Streamable HTTP endpoint'i `http://127.0.0.1:8000/mcp` adresindedir. MCP istemcisinde URL ve
-header tanımlama biçimi istemciye göre değişir. HTTP MCP bağlantılarında `X-API-Key` kabul
-edilmez; Bearer token zorunludur:
-
-```json
-{
-  "mcpServers": {
-    "private-documents": {
-      "type": "streamable-http",
-      "url": "http://127.0.0.1:8000/mcp",
-      "headers": {
-        "Authorization": "Bearer your-mcp-token"
-      }
-    }
-  }
-}
-```
-
-Yerel süreç tabanlı istemciler için stdio giriş noktası da vardır:
-
-```bash
-PDG_API_KEY='at-least-24-characters-long' private-document-gateway-mcp
-```
-
-Araçlar:
-
-- `list_documents`: sayfalı metadata listesi.
-- `get_document_metadata`: içerik olmadan tek belge durumu.
-- `search_documents`: tüm hazır belgelerde sınırlandırılmış arama.
-- `search_document`: tek belgede sınırlandırılmış arama.
-- `get_relevant_chunks`: bir soru için küçük, ilgili context seti.
-- `get_document_section`: aramadan sonra belirli chunk sırasını sınırlı okuma.
-
-Araçların tamamı salt okunurdur. Upload ve delete yalnızca REST'tedir. Ham dosya döndüren MCP
-aracı yoktur.
-
-Önerilen araç akışı:
+Recommended flow:
 
 ```text
-AI aracı
-  → search_document(query, top_k, max_tokens)
-  → BM25 relevance sıralı chunk'lar
-  → karakter + yaklaşık token bütçesi
-  → document/chunk/position kaynak bilgileri
-  → gerekirse next_cursor veya sınırlı get_document_section
+AI tool → search_document(query, top_k=3, max_tokens=600)
+        → ranked chunks + source positions + actual retrieval mode
+        → optional bounded get_document_section
 ```
 
-Örnek `search_document` argümanları:
+## Lexical, semantic, and hybrid search
 
-```json
-{
-  "document_id": "DOCUMENT_UUID",
-  "query": "termination notice period",
-  "top_k": 3,
-  "max_chars": 4000,
-  "max_tokens": 600,
-  "neighbor_window": 0,
-  "retrieval_mode": "hybrid"
-}
-```
+- `lexical` is the production default: SQLite FTS5 with heading-weighted BM25 preserves exact
+  identifiers and phrases without another service.
+- `semantic` embeds queries/chunks locally with the configurable multilingual CPU model and stores
+  vectors in private Qdrant.
+- `hybrid` merges independent lexical and semantic ranks with Reciprocal Rank Fusion; duplicate
+  chunks are returned once and exact lexical matches are not discarded.
+- `lexical_fallback` is reported when semantic/hybrid was requested but the optional local model,
+  vector store, or index is unavailable and fallback is enabled.
 
-Her retrieval item'ı aynı kaynak sözleşmesini kullanır:
+The default model is Apache-2.0-licensed
+[`sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`](https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2),
+a 384-dimensional multilingual model used through FastEmbed/ONNX on CPU. See model replacement,
+offline transfer, reindex rules, measurements, and Oracle memory guidance in
+[semantic search](docs/semantic-search.md).
 
-```json
-{
-  "document_id": "DOCUMENT_UUID",
-  "document_name": "agreement.pdf",
-  "chunk_id": "CHUNK_UUID",
-  "heading": "Termination",
-  "position": {
-    "chunk_index": 7,
-    "char_start": 12840,
-    "char_end": 14610,
-    "page_number": null,
-    "slide_number": null,
-    "sheet_name": null
-  },
-  "score": 0.00001423,
-  "content": "...bounded relevant content...",
-  "content_length": 30,
-  "token_count": 7,
-  "relation": "match"
-}
-```
+## Token optimization
 
-`neighbor_window` varsayılan olarak `0`'dır. Açıldığında önceki/sonraki chunk'lar da aynı toplam
-`top_k`, `max_chars` ve `max_tokens` bütçesinden harcar. `next_cursor`, aynı araç ve sorguyla
-sonraki relevance sayfasını almak içindir. `get_document_section` da cursor destekler ve tam
-belge endpoint'i gibi davranmaz.
+MarkItDown makes diverse files consistently parseable; it does not by itself guarantee fewer
+tokens. The gateway reduces returned context by caching conversion once, ranking chunks, omitting
+duplicates, enforcing `top_k`, `max_chars`, and estimated `max_tokens`, limiting neighbors, and
+paginating long result sets. It never exposes a default MCP tool that returns a complete document
+or raw file.
 
-`retrieval_mode`, `lexical`, `semantic` veya `hybrid` olabilir. Cevaptaki
-`requested_retrieval_mode` istenen modu, `retrieval_mode` ise gerçekten kullanılan modu gösterir.
-Yerel model ya da vector store hazır değilse ve fallback açıksa gerçek mod
-`lexical_fallback` olur. Hybrid item'ları `lexical_rank`, `semantic_rank`, `combined_rank`,
-`semantic_score` ve `matched_retrieval_modes` alanlarıyla sıralamanın kaynağını açıklar.
+Token counts are a local deterministic estimate, not a provider-specific billing tokenizer. The
+repeatable synthetic measurement and its exact scope are in
+[the retrieval report](docs/retrieval-evaluation-2026-08-24.md); no universal saving percentage is
+claimed.
 
-## İsteğe bağlı private semantic search
+## Security and privacy
 
-Varsayılan model `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`'dir: Türkçe ve
-İngilizcenin de bulunduğu 50 dil için eğitilmiş, 384 boyutlu ve Apache-2.0 lisanslı bir sentence
-embedding modelidir. FastEmbed CPU/ONNX adaptörü modeli process başına bir kez yükler; query ve
-passage prefix'leri provider içinde yapılandırılabilir. Belge veya sorgu bir cloud embedding
-API'sine gönderilmez. Model kartı ve lisans:
-[Hugging Face model card](https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2).
+- No telemetry, document text, query text, cloud embedding API, or required LLM provider.
+- Source files use UUID paths; filename traversal, absolute paths, symlink escapes, hidden/temp
+  files, MIME/signature mismatches, archive expansion, upload size, and low disk are checked.
+- REST uses API keys; remote MCP uses constant-time compared Bearer tokens from environment or a
+  Docker secret. Multiple current/previous tokens allow rotation.
+- Structured logs contain allowlisted operation metadata, never document content, credentials,
+  complete queries, or client-visible stack traces.
+- The gateway container is non-root, capability-free, `no-new-privileges`, read-only-root, and has
+  explicit writable volumes/tmpfs plus resource/log limits.
+- Base Compose publishes only `127.0.0.1:8000`; Qdrant is internal-only. Public deployment requires
+  Caddy TLS and keeps Bearer authentication/rate/response limits.
 
-İlk kurulumda model cache'ini, belge volume'larına erişmeyen tek seferlik container ile doldurun:
+Stored data comprises private UUID source copies, generated Markdown, SQLite metadata/chunks/FTS,
+optional local vectors/model cache, backups, and operator configuration. To erase data, delete
+documents through REST first; remove persistent volumes only after an explicit backup and shutdown.
+See [SECURITY.md](SECURITY.md) for private vulnerability reporting.
+
+## Oracle Cloud deployment
+
+The recommended Oracle Ubuntu deployment binds the app to loopback and uses Tailscale Serve for
+tailnet-only HTTPS. A Caddy `public` profile is documented for cases that require a domain. Oracle
+Security Lists/NSGs must never expose TCP 8000 or Qdrant 6333.
+
+VM preparation, AMD64/Ampere ARM64 notes, Docker installation, filesystem ownership, secrets,
+firewalls, Tailscale/Caddy, logging, update, backup, restore, and troubleshooting are in the
+[Oracle deployment guide](docs/oracle-deployment.md).
+
+## Configuration
+
+All application environment variables, defaults, requirements, ranges, examples, and security
+effects are listed in [the configuration contract](docs/configuration.md) and `.env.example`.
+Startup rejects missing/short credentials, invalid ports/paths, impossible chunk/budget
+relationships, unsupported retrieval modes, and invalid semantic vector-store configuration
+without echoing secret values.
+
+Operational commands:
 
 ```bash
-docker compose -f compose.prod.yaml -f compose.semantic.yaml \
-  --profile semantic-setup run --rm model-downloader
-docker compose -f compose.prod.yaml -f compose.semantic.yaml up -d --build gateway qdrant
+./pdg version
+./pdg status
+./pdg doctor
+./pdg mcp-smoke
+./pdg scan
+./pdg reindex
+./pdg reindex --semantic
+./pdg list-documents --limit 20 --offset 0
 ```
 
-Gateway `PDG_EMBEDDING_OFFLINE=true` ile başlar; bu nedenle ilk indirmeden sonra production
-çalışması dış ağa ihtiyaç duymaz. `model_cache` ve `vector_data` volume'larını silmeyin. Semantic
-özelliği kapatmak için semantic override olmadan normal Compose komutunu kullanın. Model adı,
-version veya dimension değiştirildiğinde yeni metadata ile uyumlu vektörler üretilir; kontrollü
-tam yenileme için:
+## Backup and restore
 
 ```bash
-docker compose -f compose.prod.yaml -f compose.semantic.yaml run --rm gateway \
-  private-document-gateway-semantic reindex --force
+./pdg backup
+./pdg restore /backups/pdg-backup-TIMESTAMP.tar.gz --confirm-restore
 ```
 
-Qdrant yalnızca internal Docker network'te expose edilir; host portu yayınlanmaz. Qdrant'ın
-multi-platform image'ı AMD64 ve ARM64 sağlar. Ayrıntılı ayarlar, offline aktarım ve arıza davranışı
-için [semantic search rehberine](docs/semantic-search.md) bakın.
+Restore replaces current persistent data and therefore requires an explicit confirmation flag and
+a stopped writer in production. Backups include private source storage, Markdown cache, a
+transactionally copied SQLite database, manifest, and secret-free config example. Keep `.env` and
+token files in a separate encrypted secret backup. Vector data is rebuildable from chunks.
 
-Repodaki gerçek ARM64 çalışma ölçümü ve lexical/semantic/hybrid kalite karşılaştırması:
-[24 Ağustos 2026 retrieval evaluation](docs/retrieval-evaluation-2026-08-24.md).
+## Update and rollback
 
-## Oracle Cloud production kurulumu
+Learn the current version, backup, select the reviewed tag/image, run the versioned idempotent
+migration, restart, check ready/MCP, and retain the backup until validation completes. A database
+created by a newer incompatible application is rejected instead of silently modified.
 
-Önerilen yöntem, uygulamayı yalnızca `127.0.0.1` üzerinde yayınlayıp Tailscale Serve ile tailnet
-içine açmaktır. Alternatif public yöntem Caddy otomatik HTTPS profilidir. Her iki yöntemde de
-Bearer token zorunlu kalır ve uygulamanın 8000 portu genel internete açılmaz.
+Exact commands and the safe rollback/restore path are in
+[update and rollback](docs/update-and-rollback.md). Never run `docker compose down -v` during a
+normal update.
 
-VM hazırlama, ARM64 notları, Docker kurulumu, OCI NSG/firewall, Tailscale, Caddy, kalıcı klasör
-izinleri, backup/restore, güncelleme ve sorun giderme adımları için
-[Oracle production deployment rehberine](docs/oracle-deployment.md) bakın.
+The repository also contains a manual, approval-gated GHCR workflow. Stable tag, moving minor, and
+`latest` behavior are defined in [the container publishing policy](docs/container-publishing.md);
+no image has been published by this sprint.
 
-## Güvenlik notları
+## Troubleshooting
 
-- API anahtarı response veya uygulama loguna yazılmaz; `.env` git tarafından dışlanır.
-- HTTP MCP yalnızca Bearer token kabul eder; token listesi environment veya `/run/secrets`
-  dosyasından okunabilir ve rotation için geçici olarak iki token aktif tutulabilir.
-- Dosya adı yalnızca metadata'dır. Disk yolu UUID + doğrulanmış uzantıdan oluşur.
-- Uzantı, MIME ve temel dosya imzası birlikte kontrol edilir. Office archive'larında açılmış
-  toplam boyut limiti uygulanır.
-- Maksimum upload boyutu stream sırasında uygulanır; kısmi dosya hata halinde silinir.
-- HTTP request body, rate limit, dönüşüm concurrency/timeout ve FTS search timeout sınırları
-  birbirinden bağımsız uygulanır.
-- MarkItDown yalnızca saklanan yerel UUID yolunda çalışır; MVP URL kabul etmez.
-- CORS varsayılan olarak kapalıdır. Gerekiyorsa kesin origin listesi verin.
-- MCP DNS-rebinding koruması exact Host allowlist ile çalışır.
-- Silme işlemi raw dosyayı, Markdown cache'i, chunk kayıtlarını ve FTS satırlarını siler.
-- JSON loglar query/body/header içermez; yalnızca allowlist işlem metadata'sı taşır.
-- Public kurulumda TLS, firewall/rate limit ve düzenli yedekleme hâlâ operatör sorumluluğudur.
+- `./pdg doctor`: validates config, storage permissions, SQLite/schema, disk, optional model/vector
+  state, service readiness, and version without dumping secrets.
+- `401`: use REST `X-API-Key` or MCP `Authorization: Bearer`, not the other credential type.
+- Host rejection: add the exact Tailscale/domain host to `PDG_ALLOWED_HOSTS` and recreate gateway.
+- `507`: free disk or review the reserved disk threshold before retrying ingestion.
+- `lexical_fallback`: inspect model cache and Qdrant health; lexical retrieval remains available.
+- Conversion failure: confirm supported extension, MIME/signature, UTF-8/Office archive integrity,
+  size, encryption, and whether the PDF contains text.
+- Logs: `./pdg logs --tail=100`; sanitize output before sharing.
 
-## Token tasarrufu
+See [SUPPORT.md](SUPPORT.md) and the deployment-specific troubleshooting guide before opening an
+issue.
 
-- SHA-256 aynı dosyayı ikinci kez dönüştürmeyi engeller.
-- Markdown bir kez dönüştürülür ve volume'da önbelleğe alınır.
-- Başlıkları koruyan token-aware chunk'lar FTS5/BM25 ile sıralanır; sadece ilgili metin döner.
-- Başlık eşleşmesi içerik eşleşmesine göre daha yüksek BM25 ağırlığı alır.
-- `top_k`, `max_chars`, `max_tokens`, cursor, `offset` ve `limit` sunucu tarafında üst
-  sınırlara sahiptir.
-- Büyük ölçüde örtüşen veya aynı chunk'lar bir MCP sayfasında tekrar edilmez.
-- MCP'nin tam belge veya ham dosya döndüren bir varsayılan aracı yoktur.
-- Chunk overlap düşük ve `PDG_CHUNK_OVERLAP_TOKENS` ile ayarlanabilir.
+## Compatibility
 
-### Tekrarlanabilir ölçüm
+| Environment | v0.1.0 status |
+|---|---|
+| Python | Runtime image uses Python 3.12; automated tests target 3.12. |
+| `linux/arm64` | Runtime and semantic image build/run validated on an ARM64 Docker host. |
+| `linux/amd64` | Multi-architecture Buildx CI target; release requires checklist validation. |
+| Oracle Cloud Ubuntu | Deployment contract targets Ubuntu 24.04/Ampere; fresh VM validation remains a release checklist item. |
+| Docker / Compose | ARM64 flow tested with Engine 29.6.2 and Compose 5.3.1; Compose v2 is required. |
+| Lexical search | Default image; no semantic service required. |
+| Semantic search | Optional image/Qdrant/model volumes; CPU-only tested on ARM64. |
+| Offline mode | Lexical is offline; semantic is offline after the one-time model cache fill. |
 
-Aşağıdaki değerler 24 Ağustos 2026 tarihinde, repodaki deterministik sentetik belgeyle ve
-varsayılan `500/50` chunk ayarlarıyla gerçek upload → MarkItDown cache → FTS5 → REST retrieval
-akışından ölçülmüştür. Token değerleri uygulamanın yaklaşık token estimator'ına aittir; başka
-belgeler veya model tokenizer'ları için genellenmez.
+Untested platforms are not presented as supported. Review [the release checklist](docs/release-checklist.md)
+before publishing artifacts.
 
-```bash
-.venv/bin/python scripts/measure_retrieval.py
-```
+## Limitations
 
-| Ölçüm | Gözlenen değer |
-|---|---:|
-| Tam belgenin yaklaşık token sayısı | 5920 |
-| Retrieval'ın döndürdüğü yaklaşık token sayısı | 240 |
-| Döndürülen chunk sayısı | 1 |
-| Arama süresi | 4.279 ms |
-| Cache kullanıldı | evet |
-| Bu fixture için ölçülen token azalması | %95.95 |
+- Single-node SQLite is not a high-availability or multi-writer database.
+- Upload conversion is synchronous in `0.1.0`; large documents may need longer client/proxy
+  timeouts.
+- No OCR, cloud storage adapter, user accounts, UI, answer generation, reranker, fine-tuning, or
+  SaaS control plane.
+- Approximate token budgets may differ from a specific LLM tokenizer.
+- Semantic model download needs temporary outbound access unless the cache is transferred offline.
 
-Arama süresi donanım, SQLite cache durumu ve container yüküne göre değişir. Ölçüm komutu aynı
-tabloyla birlikte güncel sonucu JSON olarak üretir; README yüzdesi yalnızca yukarıdaki koşullar
-için bir gözlemdir.
+## Roadmap
 
-## Kısa ADR
+- Background conversion jobs without making Redis mandatory for single-node users.
+- Optional PostgreSQL/pgvector and object-storage adapters behind existing interfaces.
+- More converter metadata extraction and operator-controlled OCR adapter.
+- Signed releases, SBOM/provenance, expanded cross-architecture and upgrade fixtures.
 
-### ADR-001 — Ürünleşmiş tek-sunucu MVP için SQLite
+## Contributing
 
-SQLite, Oracle VM üzerinde ek servis gerektirmeyen en düşük operasyon maliyetli seçenektir. Bu
-sürüm WAL, foreign key, busy timeout, indeksler, transaction ve SHA-256 unique constraint ile
-çalışır; yani yalnızca bir demo deposu olarak kullanılmaz. SQLAlchemy ve `DocumentRepository`
-sınırı sayesinde çoklu instance, yoğun eşzamanlı yazma veya HA ihtiyacı doğduğunda PostgreSQL'e
-geçiş servis/API katmanını değiştirmeden yapılabilir. Bu eşik gelmeden PostgreSQL eklemek ürünün
-tek komut ve düşük kaynak avantajını azaltır.
+Read [CONTRIBUTING.md](CONTRIBUTING.md), follow [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), add tests,
+and use only synthetic non-sensitive fixtures. Security reports must use the private route in
+[SECURITY.md](SECURITY.md), never a public issue.
 
-### ADR-002 — İlk sprintte isteğe bağlı worker yok
+## License
 
-Upload isteği dönüşümü aynı işlem içinde tamamlar ve kesin `ready`/`failed` sonucu verir. Kuyruk
-ve worker, uzun belgelerde request süresi sorun olduğunda eklenebilir; Redis ilk sürüm bağımlılığı
-değildir.
-
-### ADR-003 — Retrieval-first MCP
-
-MCP önce liste/metadata/arama, sonra bounded section akışını teşvik eder. Upload/silme REST'te
-kalarak LLM aracının mutasyon yüzeyi kapalı tutulur.
-
-### ADR-004 — Yerel FTS5 ve model-bağımsız token tahmini
-
-Sprint 2 araması harici bir vector servisi yerine SQLite FTS5'in `unicode61` tokenizer'ı ve
-başlık ağırlıklı BM25 skoru üzerine kuruludur. `SearchIndex` sınırı ileride hybrid/semantic bir
-adaptör eklenebilmesi için servis katmanından ayrıdır. Token bütçesi sağlayıcı SDK'sına bağlı
-olmayan deterministik bir tahminle uygulanır; ürünün OpenAI, Claude veya başka bir LLM'e zorunlu
-bağımlılığı yoktur.
-
-### ADR-005 — Private-first production erişimi
-
-Production Compose uygulamayı yalnızca loopback'e bind eder. Önerilen Tailscale Serve kurulumu
-tailnet ACL ve HTTPS termination sağlar. Genel erişim gerektiğinde standart, multi-arch Caddy
-image'ı ayrı profile ile 80/443'ü açar; gateway yalnızca internal Docker network üzerinden proxy
-edilir. Rate limit uygulamada token/istemci bazlıdır ve Caddy request-size/timeout katmanıyla
-birlikte çalışır.
-
-### ADR-006 — Opsiyonel FastEmbed + Qdrant ve RRF
-
-Temel image küçük ve lexical-only kalır. Semantic profile CPU üzerinde çalışan multilingual
-FastEmbed provider'ını ve ayrı, kalıcı Qdrant servisini ekler. Qdrant adapter arkasındadır ve host
-portu yoktur. Hybrid sıralama farklı BM25/cosine ölçeklerini doğrudan toplamak yerine Reciprocal
-Rank Fusion kullanır; exact lexical eşleşmeler korunur. Semantic hata temel servisi kapatmaz ve
-cevap gerçek `lexical_fallback` modunu bildirir.
-
-## Yol haritası
-
-- Background job/worker ve işlem progress'i
-- Semantic index bakım görünürlüğü ve isteğe bağlı arka plan indeks worker'ı
-- PostgreSQL repository ve çoklu instance profili
-- S3/MinIO uyumlu opsiyonel storage adaptörü
-- OCR için tamamen yerel, opsiyonel adapter
-- API key rotation, rate limit ve audit metadata (belge içeriği olmadan)
-- İsteğe bağlı tenant/ACL modeli
+Private Document Gateway is available under the existing [MIT License](LICENSE). Third-party
+libraries and the optional embedding model retain their own licenses.
