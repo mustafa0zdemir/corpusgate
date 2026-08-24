@@ -26,6 +26,7 @@ READ_ONLY = ToolAnnotations(
 def create_mcp_server(settings: Settings, sessions: sessionmaker) -> MCPServer:
     server = MCPServer(
         "Private Document Gateway",
+        version=settings.app_version,
         instructions=(
             "Search before reading sections. Retrieval tools return relevance-ranked, "
             "source-attributed chunks under server-enforced character and estimated-token "

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "private-document-gateway"
-version = "0.2.0"
+version = "0.3.0"
 description = "Self-hosted, secure document-to-Markdown gateway for LLM tools"
 readme = "README.md"
 requires-python = ">=3.12,<3.15"
