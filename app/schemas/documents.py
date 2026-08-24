@@ -82,18 +82,42 @@ class ChunkListResponse(BaseModel):
     has_more: bool
 
 
+class ChunkPositionResponse(BaseModel):
+    chunk_index: int
+    char_start: int
+    char_end: int
+    page_number: int | None
+    slide_number: int | None
+    sheet_name: str | None
+
+
 class SearchHitResponse(BaseModel):
     document_id: str
-    original_filename: str
+    document_name: str
     chunk_id: str
-    chunk_index: int
     heading: str | None
-    content: str
+    position: ChunkPositionResponse
     score: float
+    content: str
+    content_length: int
+    token_count: int
+    relation: str
+
+
+class RetrievalMetricsResponse(BaseModel):
+    full_document_estimated_tokens: int
+    returned_estimated_tokens: int
+    returned_chars: int
+    returned_chunk_count: int
+    search_ms: float
+    cache_used: bool
 
 
 class SearchResponse(BaseModel):
     query: str
     items: list[SearchHitResponse]
     top_k: int
-    returned_chars: int
+    max_chars: int
+    max_tokens: int
+    next_cursor: str | None
+    metrics: RetrievalMetricsResponse

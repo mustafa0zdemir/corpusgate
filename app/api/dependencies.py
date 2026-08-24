@@ -50,9 +50,15 @@ DocumentServiceDependency = Annotated[DocumentService, Depends(get_document_serv
 
 
 def get_search_service(
-    session: SessionDependency, repository: RepositoryDependency
+    request: Request,
+    session: SessionDependency,
+    repository: RepositoryDependency,
 ) -> FullTextSearchService:
-    return FullTextSearchService(repository, SQLiteFtsSearchIndex(session))
+    return FullTextSearchService(
+        request.app.state.settings,
+        repository,
+        SQLiteFtsSearchIndex(session),
+    )
 
 
 SearchServiceDependency = Annotated[FullTextSearchService, Depends(get_search_service)]

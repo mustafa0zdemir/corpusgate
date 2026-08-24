@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     max_page_size: int = Field(default=100, ge=1, le=500)
     default_search_top_k: int = Field(default=5, ge=1, le=50)
     max_search_top_k: int = Field(default=20, ge=1, le=100)
+    max_neighbor_window: int = Field(default=1, ge=0, le=3)
     default_response_max_chars: int = Field(default=8_000, ge=200, le=100_000)
     max_response_chars: int = Field(default=24_000, ge=500, le=250_000)
     default_response_max_tokens: int = Field(default=2_000, ge=50, le=32_000)

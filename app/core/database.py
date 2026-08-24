@@ -15,6 +15,7 @@ class Base(DeclarativeBase):
 
 class Database:
     def __init__(self, settings: Settings):
+        self.settings = settings
         database_url = settings.resolved_database_url
         connect_args = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
         self.engine = create_engine(
@@ -37,6 +38,7 @@ class Database:
         Base.metadata.create_all(self.engine)
         if self.engine.url.get_backend_name() == "sqlite":
             self._migrate_sqlite_schema()
+            self._backfill_token_counts()
             self._create_fts_index()
 
     def _migrate_sqlite_schema(self) -> None:
@@ -79,6 +81,40 @@ class Database:
                 "FROM chunks c WHERE NOT EXISTS ("
                 "SELECT 1 FROM chunk_fts f WHERE f.chunk_id = c.id)"
             )
+
+    def _backfill_token_counts(self) -> None:
+        from app.chunking.tokens import ApproximateTokenEstimator
+
+        estimator = ApproximateTokenEstimator()
+        data_root = self.settings.data_dir.resolve()
+        with self.engine.begin() as connection:
+            chunks = connection.exec_driver_sql(
+                "SELECT id, content FROM chunks WHERE token_count = 0"
+            ).fetchall()
+            if chunks:
+                connection.exec_driver_sql(
+                    "UPDATE chunks SET token_count = ? WHERE id = ?",
+                    [(estimator.estimate(content), chunk_id) for chunk_id, content in chunks],
+                )
+
+            documents = connection.exec_driver_sql(
+                "SELECT id, markdown_path FROM documents "
+                "WHERE markdown_tokens = 0 AND markdown_path IS NOT NULL"
+            ).fetchall()
+            updates: list[tuple[int, str]] = []
+            for document_id, markdown_path in documents:
+                candidate = (data_root / markdown_path).resolve()
+                if data_root not in candidate.parents or not candidate.is_file():
+                    continue
+                try:
+                    updates.append((estimator.estimate(candidate.read_text("utf-8")), document_id))
+                except (OSError, UnicodeError):
+                    continue
+            if updates:
+                connection.exec_driver_sql(
+                    "UPDATE documents SET markdown_tokens = ? WHERE id = ?",
+                    updates,
+                )
 
     def session(self) -> Iterator[Session]:
         with self.session_factory() as session:
