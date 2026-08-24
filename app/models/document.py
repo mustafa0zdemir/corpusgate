@@ -32,6 +32,7 @@ class Document(Base):
     storage_path: Mapped[str] = mapped_column(String(512))
     markdown_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
     markdown_chars: Mapped[int] = mapped_column(Integer, default=0)
+    markdown_tokens: Mapped[int] = mapped_column(Integer, default=0)
     chunk_count: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(
         String(16), default=DocumentStatus.pending.value, index=True
@@ -68,6 +69,10 @@ class Chunk(Base):
     content: Mapped[str] = mapped_column(Text)
     char_start: Mapped[int] = mapped_column(Integer)
     char_end: Mapped[int] = mapped_column(Integer)
+    token_count: Mapped[int] = mapped_column(Integer, default=0)
+    page_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    slide_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sheet_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     document: Mapped[Document] = relationship(back_populates="chunks")

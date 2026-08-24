@@ -5,6 +5,7 @@ from typing import BinaryIO
 from uuid import uuid4
 
 from app.chunking.base import ChunkStrategy
+from app.chunking.tokens import ApproximateTokenEstimator
 from app.core.config import Settings
 from app.core.errors import AppError, DocumentConversionError, DocumentNotFoundError
 from app.models.document import Chunk, Document, DocumentStatus
@@ -35,6 +36,7 @@ class DocumentService:
         self.parser = parser
         self.storage = storage
         self.chunker = chunker
+        self.token_estimator = ApproximateTokenEstimator()
 
     def upload(
         self,
@@ -88,11 +90,12 @@ class DocumentService:
         try:
             markdown = self.parser.parse(self.storage.resolve(document.storage_path))
             markdown_path = self.storage.save_markdown(document.id, markdown)
-            chunks = self.chunker.split(markdown)
+            chunks = self.chunker.split(markdown, document_type=document.extension)
             self.repository.mark_ready(
                 document,
                 markdown_path=markdown_path,
                 markdown_chars=len(markdown),
+                markdown_tokens=self.token_estimator.estimate(markdown),
                 chunks=chunks,
             )
         except AppError as exc:

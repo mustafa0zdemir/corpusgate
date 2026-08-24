@@ -36,6 +36,7 @@ class DocumentMetadata(DocumentSummary):
     extension: str
     sha256: str
     markdown_chars: int
+    markdown_tokens: int
     error_message: str | None = None
 
 
@@ -65,6 +66,10 @@ class ChunkResponse(BaseModel):
     content: str
     char_start: int
     char_end: int
+    token_count: int
+    page_number: int | None
+    slide_number: int | None
+    sheet_name: str | None
 
 
 class ChunkListResponse(BaseModel):

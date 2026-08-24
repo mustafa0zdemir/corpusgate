@@ -28,24 +28,35 @@ class Settings(BaseSettings):
     max_archive_uncompressed_mb: int = Field(default=250, ge=1, le=4096)
     upload_buffer_bytes: int = Field(default=1024 * 1024, ge=64 * 1024, le=8 * 1024 * 1024)
 
-    chunk_size_chars: int = Field(default=2_000, ge=300, le=20_000)
-    chunk_overlap_chars: int = Field(default=120, ge=0, le=2_000)
+    chunk_size_tokens: int = Field(default=500, ge=50, le=8_000)
+    chunk_overlap_tokens: int = Field(default=50, ge=0, le=1_000)
+    min_chunk_tokens: int = Field(default=40, ge=1, le=1_000)
     default_page_size: int = Field(default=20, ge=1, le=100)
     max_page_size: int = Field(default=100, ge=1, le=500)
     default_search_top_k: int = Field(default=5, ge=1, le=50)
     max_search_top_k: int = Field(default=20, ge=1, le=100)
     default_response_max_chars: int = Field(default=8_000, ge=200, le=100_000)
     max_response_chars: int = Field(default=24_000, ge=500, le=250_000)
+    default_response_max_tokens: int = Field(default=2_000, ge=50, le=32_000)
+    max_response_tokens: int = Field(default=6_000, ge=100, le=64_000)
 
     cors_origins: str = ""
     allowed_hosts: str = "localhost,localhost:*,127.0.0.1,127.0.0.1:*"
 
-    @field_validator("chunk_overlap_chars")
+    @field_validator("chunk_overlap_tokens")
     @classmethod
     def overlap_must_be_smaller_than_chunk(cls, value: int, info) -> int:
-        chunk_size = info.data.get("chunk_size_chars", 2_000)
+        chunk_size = info.data.get("chunk_size_tokens", 500)
         if value >= chunk_size:
             raise ValueError("chunk overlap must be smaller than chunk size")
+        return value
+
+    @field_validator("min_chunk_tokens")
+    @classmethod
+    def minimum_must_not_exceed_chunk_size(cls, value: int, info) -> int:
+        chunk_size = info.data.get("chunk_size_tokens", 500)
+        if value > chunk_size:
+            raise ValueError("minimum chunk size must not exceed chunk size")
         return value
 
     @property

@@ -43,6 +43,7 @@ class DocumentRepository(ABC):
         *,
         markdown_path: str,
         markdown_chars: int,
+        markdown_tokens: int,
         chunks: list[ChunkDraft],
     ) -> None:
         raise NotImplementedError

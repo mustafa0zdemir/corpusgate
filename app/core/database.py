@@ -35,6 +35,32 @@ class Database:
         from app.models.document import Chunk, Document  # noqa: F401
 
         Base.metadata.create_all(self.engine)
+        if self.engine.url.get_backend_name() == "sqlite":
+            self._migrate_sqlite_schema()
+
+    def _migrate_sqlite_schema(self) -> None:
+        additions = {
+            "documents": {
+                "markdown_tokens": "INTEGER NOT NULL DEFAULT 0",
+            },
+            "chunks": {
+                "token_count": "INTEGER NOT NULL DEFAULT 0",
+                "page_number": "INTEGER",
+                "slide_number": "INTEGER",
+                "sheet_name": "VARCHAR(255)",
+            },
+        }
+        with self.engine.begin() as connection:
+            for table, columns in additions.items():
+                existing = {
+                    row[1]
+                    for row in connection.exec_driver_sql(f"PRAGMA table_info({table})").fetchall()
+                }
+                for column, definition in columns.items():
+                    if column not in existing:
+                        connection.exec_driver_sql(
+                            f"ALTER TABLE {table} ADD COLUMN {column} {definition}"
+                        )
 
     def session(self) -> Iterator[Session]:
         with self.session_factory() as session:

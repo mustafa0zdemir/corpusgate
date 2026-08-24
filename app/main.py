@@ -29,7 +29,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     database = Database(settings)
     storage = LocalFileStorage(settings.data_dir, settings.max_file_size_mb)
     parser = MarkItDownDocumentParser()
-    chunker = MarkdownChunkStrategy(settings.chunk_size_chars, settings.chunk_overlap_chars)
+    chunker = MarkdownChunkStrategy(
+        target_tokens=settings.chunk_size_tokens,
+        overlap_tokens=settings.chunk_overlap_tokens,
+        min_chunk_tokens=settings.min_chunk_tokens,
+    )
     mcp_server = create_mcp_server(settings, database.session_factory)
     transport_security = TransportSecuritySettings(
         allowed_hosts=settings.allowed_host_list,

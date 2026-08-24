@@ -22,11 +22,14 @@ def settings(tmp_path) -> Settings:
         environment="test",
         data_dir=tmp_path / "data",
         database_url=f"sqlite:///{tmp_path / 'test.db'}",
-        chunk_size_chars=500,
-        chunk_overlap_chars=40,
+        chunk_size_tokens=100,
+        chunk_overlap_tokens=10,
+        min_chunk_tokens=10,
         max_file_size_mb=1,
         default_response_max_chars=2_000,
         max_response_chars=5_000,
+        default_response_max_tokens=500,
+        max_response_tokens=1_000,
     )
 
 

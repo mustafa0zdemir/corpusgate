@@ -53,6 +53,7 @@ class SQLiteDocumentRepository(DocumentRepository):
         *,
         markdown_path: str,
         markdown_chars: int,
+        markdown_tokens: int,
         chunks: list[ChunkDraft],
     ) -> None:
         try:
@@ -67,12 +68,17 @@ class SQLiteDocumentRepository(DocumentRepository):
                         content=draft.content,
                         char_start=draft.char_start,
                         char_end=draft.char_end,
+                        token_count=draft.token_count,
+                        page_number=draft.page_number,
+                        slide_number=draft.slide_number,
+                        sheet_name=draft.sheet_name,
                     )
                     for draft in chunks
                 ]
             )
             document.markdown_path = markdown_path
             document.markdown_chars = markdown_chars
+            document.markdown_tokens = markdown_tokens
             document.chunk_count = len(chunks)
             document.status = DocumentStatus.ready.value
             document.error_message = None
