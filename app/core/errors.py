@@ -31,3 +31,30 @@ class FileTooLargeError(InvalidFileError):
 class DocumentConversionError(AppError):
     def __init__(self, message: str = "The document could not be converted.") -> None:
         super().__init__(message, status_code=422, code="conversion_failed")
+
+
+class OperationBusyError(AppError):
+    def __init__(self, operation: str) -> None:
+        super().__init__(
+            f"The {operation} capacity is currently full.",
+            status_code=503,
+            code=f"{operation}_busy",
+        )
+
+
+class OperationTimeoutError(AppError):
+    def __init__(self, operation: str) -> None:
+        super().__init__(
+            f"The {operation} operation exceeded its configured time limit.",
+            status_code=504,
+            code=f"{operation}_timeout",
+        )
+
+
+class InsufficientStorageError(AppError):
+    def __init__(self) -> None:
+        super().__init__(
+            "There is not enough storage space to complete the operation.",
+            status_code=507,
+            code="insufficient_storage",
+        )

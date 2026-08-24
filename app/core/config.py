@@ -25,10 +25,14 @@ class Settings(BaseSettings):
     mcp_auth_token_file: Path | None = None
 
     data_dir: Path = Path("data")
+    documents_dir: Path | None = None
+    cache_dir: Path | None = None
     database_url: str | None = None
     max_file_size_mb: int = Field(default=25, ge=1, le=1024)
     max_archive_uncompressed_mb: int = Field(default=250, ge=1, le=4096)
     upload_buffer_bytes: int = Field(default=1024 * 1024, ge=64 * 1024, le=8 * 1024 * 1024)
+    max_request_body_mb: int | None = Field(default=None, ge=1, le=2048)
+    min_free_disk_mb: int = Field(default=100, ge=0, le=102_400)
 
     chunk_size_tokens: int = Field(default=500, ge=50, le=8_000)
     chunk_overlap_tokens: int = Field(default=50, ge=0, le=1_000)
@@ -47,6 +51,10 @@ class Settings(BaseSettings):
     rate_limit_window_seconds: int = Field(default=60, ge=1, le=3_600)
     log_level: str = "INFO"
     public_base_url: str | None = None
+    max_concurrent_conversions: int = Field(default=1, ge=1, le=16)
+    conversion_timeout_seconds: int = Field(default=120, ge=1, le=3_600)
+    conversion_queue_timeout_seconds: int = Field(default=5, ge=0, le=300)
+    search_timeout_seconds: int = Field(default=10, ge=1, le=300)
 
     cors_origins: str = ""
     allowed_hosts: str = "localhost,localhost:*,127.0.0.1,127.0.0.1:*"
@@ -69,11 +77,19 @@ class Settings(BaseSettings):
 
     @property
     def uploads_dir(self) -> Path:
-        return self.data_dir / "uploads"
+        return self.documents_root
 
     @property
     def markdown_dir(self) -> Path:
-        return self.data_dir / "markdown"
+        return self.cache_root
+
+    @property
+    def documents_root(self) -> Path:
+        return self.documents_dir or self.data_dir / "uploads"
+
+    @property
+    def cache_root(self) -> Path:
+        return self.cache_dir or self.data_dir / "markdown"
 
     @property
     def resolved_database_url(self) -> str:
@@ -84,6 +100,15 @@ class Settings(BaseSettings):
     @property
     def max_file_size_bytes(self) -> int:
         return self.max_file_size_mb * 1024 * 1024
+
+    @property
+    def max_request_body_bytes(self) -> int:
+        configured_mb = self.max_request_body_mb or self.max_file_size_mb + 2
+        return configured_mb * 1024 * 1024
+
+    @property
+    def min_free_disk_bytes(self) -> int:
+        return self.min_free_disk_mb * 1024 * 1024
 
     @property
     def max_archive_uncompressed_bytes(self) -> int:

@@ -42,3 +42,7 @@ class FileStorage(ABC):
     @abstractmethod
     def delete(self, relative_path: str | None) -> None:
         raise NotImplementedError
+
+    @abstractmethod
+    def is_ready(self) -> bool:
+        raise NotImplementedError

@@ -17,7 +17,8 @@ from app.core.config import Settings, get_settings
 from app.core.database import Database
 from app.core.errors import AppError
 from app.core.logging import RequestLoggingMiddleware, configure_logging
-from app.core.security import AuthenticationMiddleware
+from app.core.resources import OperationCapacity
+from app.core.security import AuthenticationMiddleware, RequestBodyLimitMiddleware
 from app.mcp.server import create_mcp_server
 from app.parsers.markitdown import MarkItDownDocumentParser
 from app.storage.local import LocalFileStorage
@@ -29,7 +30,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(settings)
     database = Database(settings)
-    storage = LocalFileStorage(settings.data_dir, settings.max_file_size_mb)
+    storage = LocalFileStorage(
+        settings.data_dir,
+        settings.max_file_size_mb,
+        documents_dir=settings.documents_root,
+        markdown_dir=settings.cache_root,
+        min_free_bytes=settings.min_free_disk_bytes,
+    )
+    conversion_capacity = OperationCapacity(
+        operation="conversion",
+        capacity=settings.max_concurrent_conversions,
+        queue_timeout=settings.conversion_queue_timeout_seconds,
+    )
     parser = MarkItDownDocumentParser()
     chunker = MarkdownChunkStrategy(
         target_tokens=settings.chunk_size_tokens,
@@ -50,9 +62,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         database.create_schema()
-        async with mcp_server.session_manager.run():
-            yield
-        database.dispose()
+        try:
+            async with mcp_server.session_manager.run():
+                yield
+        finally:
+            conversion_capacity.shutdown()
+            database.dispose()
 
     app = FastAPI(
         title=settings.app_name,
@@ -65,8 +80,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.storage = storage
     app.state.parser = parser
     app.state.chunker = chunker
+    app.state.conversion_capacity = conversion_capacity
     app.state.mcp_server = mcp_server
 
+    app.add_middleware(RequestBodyLimitMiddleware, max_bytes=settings.max_request_body_bytes)
     app.add_middleware(AuthenticationMiddleware, settings=settings)
     app.add_middleware(
         CORSMiddleware,
@@ -129,7 +146,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/ready", tags=["system"])
     def ready() -> JSONResponse:
-        if database.is_ready():
+        if database.is_ready() and storage.is_ready():
             return JSONResponse({"status": "ready"})
         return JSONResponse({"status": "not_ready"}, status_code=503)
 

@@ -74,6 +74,19 @@ def test_rate_limit_is_per_credential_and_health_remains_available(settings) -> 
         assert client.get("/health").status_code == 200
 
 
+def test_request_body_limit_rejects_before_upload_processing(settings) -> None:
+    limited = settings.model_copy(update={"max_request_body_mb": 1})
+    with TestClient(create_app(limited)) as client:
+        response = client.post(
+            "/api/v1/documents",
+            headers={"X-API-Key": TEST_API_KEY},
+            files={"file": ("large.txt", b"x" * (1024 * 1024 + 1), "text/plain")},
+        )
+
+    assert response.status_code == 413
+    assert response.json()["error"]["code"] == "request_too_large"
+
+
 def test_health_is_minimal_ready_is_public_and_secrets_are_not_logged(
     client: TestClient, capsys
 ) -> None:

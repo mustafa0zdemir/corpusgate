@@ -61,6 +61,20 @@ def test_retrieval_caps_parameters_and_supports_query_bound_cursor(
     client: TestClient, auth_headers: dict[str, str]
 ) -> None:
     document_id = _upload(client, auth_headers)
+    capped = client.get(
+        f"/api/v1/documents/{document_id}/search",
+        headers=auth_headers,
+        params={
+            "q": "centralneedle",
+            "top_k": 100,
+            "max_chars": 250_000,
+            "max_tokens": 64_000,
+        },
+    ).json()
+    assert capped["top_k"] == 20
+    assert capped["max_chars"] == 5_000
+    assert capped["max_tokens"] == 1_000
+
     first = client.get(
         f"/api/v1/documents/{document_id}/search",
         headers=auth_headers,

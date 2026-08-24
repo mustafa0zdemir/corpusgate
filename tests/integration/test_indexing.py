@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Event
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
+
+from app.core.errors import OperationTimeoutError
+from app.repositories.sqlite_fts import SQLiteFtsSearchIndex
 
 
 class CountingParser:
@@ -15,6 +21,22 @@ class CountingParser:
         content = path.read_text(encoding="utf-8")
         if "BROKEN" in content:
             raise RuntimeError("fixture conversion failure")
+        return content
+
+
+class BlockingReplacementParser(CountingParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.started = Event()
+        self.release = Event()
+
+    def parse(self, path: Path) -> str:
+        content = path.read_text(encoding="utf-8")
+        if "replacementterm" in content:
+            self.started.set()
+            if not self.release.wait(2):
+                raise RuntimeError("fixture synchronization timeout")
+        self.calls += 1
         return content
 
 
@@ -141,3 +163,58 @@ def test_fts_bm25_weights_heading_and_delete_cleans_index(
             {"document_id": document_id},
         ).scalar_one()
     assert indexed == 0
+
+
+def test_fts_search_timeout_interrupts_sqlite_query(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    content = "\n\n".join(
+        f"# Section {index}\n\ntimeoutterm " + "searchable context material " * 40
+        for index in range(40)
+    )
+    response = client.post(
+        "/api/v1/documents",
+        headers=auth_headers,
+        files={"file": ("timeout.md", content.encode(), "text/markdown")},
+    )
+    assert response.status_code == 201
+
+    with client.app.state.database.session_factory() as session:
+        index = SQLiteFtsSearchIndex(session, timeout_seconds=0)
+        with pytest.raises(OperationTimeoutError):
+            index.search(["timeoutterm"], document_ids=None, limit=100)
+
+
+def test_search_remains_consistent_during_concurrent_reindex(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    parser = BlockingReplacementParser()
+    client.app.state.parser = parser
+    first = _upload(client, auth_headers, "# Stable\n\nstableterm " + "context " * 40)
+    document_id = first.json()["document_id"]
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        replacement = executor.submit(
+            _upload,
+            client,
+            auth_headers,
+            "# Replacement\n\nreplacementterm " + "new context " * 40,
+        )
+        assert parser.started.wait(1)
+        during = client.get(
+            f"/api/v1/documents/{document_id}/search",
+            headers=auth_headers,
+            params={"q": "stableterm"},
+        )
+        assert during.status_code == 200
+        assert during.json()["items"]
+        parser.release.set()
+        assert replacement.result(timeout=2).status_code == 201
+
+    after = client.get(
+        f"/api/v1/documents/{document_id}/search",
+        headers=auth_headers,
+        params={"q": "replacementterm"},
+    )
+    assert after.status_code == 200
+    assert after.json()["items"]

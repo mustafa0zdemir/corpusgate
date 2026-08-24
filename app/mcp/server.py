@@ -197,7 +197,10 @@ def create_mcp_server(settings: Settings, sessions: sessionmaker) -> MCPServer:
                 page = FullTextSearchService(
                     settings,
                     repository,
-                    SQLiteFtsSearchIndex(session),
+                    SQLiteFtsSearchIndex(
+                        session,
+                        timeout_seconds=settings.search_timeout_seconds,
+                    ),
                 ).section(
                     document_id,
                     start_chunk=start_chunk,
@@ -231,7 +234,10 @@ def _search_payload(
             page = FullTextSearchService(
                 settings,
                 repository,
-                SQLiteFtsSearchIndex(session),
+                SQLiteFtsSearchIndex(
+                    session,
+                    timeout_seconds=settings.search_timeout_seconds,
+                ),
             ).search(
                 query,
                 document_ids=document_ids,

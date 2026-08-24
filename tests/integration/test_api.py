@@ -100,7 +100,7 @@ def test_rejects_unsupported_and_spoofed_files(
     assert list((settings.data_dir / "uploads").iterdir()) == []
 
 
-def test_filename_is_metadata_only(
+def test_path_components_in_filename_are_rejected(
     client: TestClient, auth_headers: dict[str, str], settings
 ) -> None:
     response = client.post(
@@ -108,9 +108,27 @@ def test_filename_is_metadata_only(
         headers=auth_headers,
         files={"file": ("../../notes.txt", b"safe text", "text/plain")},
     )
-    assert response.status_code == 201
-    payload = response.json()
-    assert payload["original_filename"] == "notes.txt"
-    upload = next((settings.data_dir / "uploads").iterdir())
-    assert upload.parent == (settings.data_dir / "uploads")
-    assert upload.name.startswith(payload["document_id"])
+    assert response.status_code == 415
+    assert response.json()["error"]["code"] == "invalid_file"
+    assert list((settings.data_dir / "uploads").iterdir()) == []
+
+
+def test_hidden_temporary_and_oversized_files_are_rejected(
+    client: TestClient, auth_headers: dict[str, str], settings
+) -> None:
+    for filename in (".hidden.md", ".env", "~$draft.docx", "notes.md~"):
+        response = client.post(
+            "/api/v1/documents",
+            headers=auth_headers,
+            files={"file": (filename, b"hidden", "application/octet-stream")},
+        )
+        assert response.status_code == 415
+
+    oversized = client.post(
+        "/api/v1/documents",
+        headers=auth_headers,
+        files={"file": ("large.txt", b"x" * (1024 * 1024 + 1), "text/plain")},
+    )
+    assert oversized.status_code == 413
+    assert oversized.json()["error"]["code"] == "file_too_large"
+    assert list((settings.data_dir / "uploads").iterdir()) == []

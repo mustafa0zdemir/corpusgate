@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import unicodedata
 import zipfile
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from app.core.errors import InvalidFileError
 
@@ -21,6 +21,8 @@ SUPPORTED_CONTENT_TYPES: dict[str, set[str]] = {
 
 GENERIC_CONTENT_TYPES = {"", "application/octet-stream"}
 OFFICE_MARKERS = {".docx": "word/", ".pptx": "ppt/", ".xlsx": "xl/"}
+SYSTEM_FILENAMES = {".env", ".ds_store", "thumbs.db", "desktop.ini"}
+TEMPORARY_SUFFIXES = {".part", ".temp", ".tmp", ".swp"}
 
 
 def validate_upload_metadata(
@@ -62,9 +64,25 @@ def validate_file_signature(path: Path, extension: str, max_archive_bytes: int) 
 def sanitize_filename(filename: str | None) -> str:
     if not filename:
         raise InvalidFileError("A filename is required.")
-    normalized = unicodedata.normalize("NFKC", filename).replace("\\", "/").split("/")[-1]
+    normalized = unicodedata.normalize("NFKC", filename).strip()
+    if (
+        "/" in normalized
+        or "\\" in normalized
+        or Path(normalized).is_absolute()
+        or PureWindowsPath(normalized).is_absolute()
+        or normalized in {".", ".."}
+    ):
+        raise InvalidFileError("Path components are not allowed in filenames.")
     normalized = re.sub(r"[\x00-\x1f\x7f]", "", normalized).strip()
-    if not normalized or normalized in {".", ".."}:
+    folded = normalized.casefold()
+    if (
+        not normalized
+        or normalized.startswith(".")
+        or normalized.startswith("~$")
+        or normalized.endswith("~")
+        or folded in SYSTEM_FILENAMES
+        or Path(folded).suffix in TEMPORARY_SUFFIXES
+    ):
         raise InvalidFileError("The filename is invalid.")
     return normalized[:255]
 

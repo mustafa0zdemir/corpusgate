@@ -86,7 +86,7 @@ class Database:
         from app.chunking.tokens import ApproximateTokenEstimator
 
         estimator = ApproximateTokenEstimator()
-        data_root = self.settings.data_dir.resolve()
+        cache_root = self.settings.cache_root.resolve()
         with self.engine.begin() as connection:
             chunks = connection.exec_driver_sql(
                 "SELECT id, content FROM chunks WHERE token_count = 0"
@@ -103,8 +103,9 @@ class Database:
             ).fetchall()
             updates: list[tuple[int, str]] = []
             for document_id, markdown_path in documents:
-                candidate = (data_root / markdown_path).resolve()
-                if data_root not in candidate.parents or not candidate.is_file():
+                relative_cache_path = markdown_path.removeprefix("markdown/")
+                candidate = (cache_root / relative_cache_path).resolve()
+                if cache_root not in candidate.parents or not candidate.is_file():
                     continue
                 try:
                     updates.append((estimator.estimate(candidate.read_text("utf-8")), document_id))

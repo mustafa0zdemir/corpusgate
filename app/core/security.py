@@ -12,6 +12,59 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from app.core.config import Settings
 
 
+class _RequestBodyTooLarge(Exception):
+    pass
+
+
+class RequestBodyLimitMiddleware:
+    def __init__(self, app: ASGIApp, max_bytes: int):
+        self.app = app
+        self.max_bytes = max_bytes
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        headers = {key.lower(): value for key, value in scope.get("headers", [])}
+        content_length = headers.get(b"content-length", b"")
+        try:
+            declared_size = int(content_length) if content_length else 0
+        except ValueError:
+            declared_size = 0
+        if declared_size > self.max_bytes:
+            await self._reject(scope, receive, send)
+            return
+
+        received = 0
+
+        async def limited_receive():
+            nonlocal received
+            message = await receive()
+            if message["type"] == "http.request":
+                received += len(message.get("body", b""))
+                if received > self.max_bytes:
+                    raise _RequestBodyTooLarge
+            return message
+
+        try:
+            await self.app(scope, limited_receive, send)
+        except _RequestBodyTooLarge:
+            await self._reject(scope, receive, send)
+
+    @staticmethod
+    async def _reject(scope: Scope, receive: Receive, send: Send) -> None:
+        await _error_response(
+            scope,
+            receive,
+            send,
+            status_code=413,
+            code="request_too_large",
+            message="The request body exceeds the configured limit.",
+            headers={},
+        )
+
+
 class SlidingWindowRateLimiter:
     def __init__(self, requests: int, window_seconds: int):
         self.requests = requests

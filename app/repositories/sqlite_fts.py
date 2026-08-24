@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import sqlite3
+from time import monotonic
+
 from sqlalchemy import select, text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
+from app.core.errors import OperationTimeoutError
 from app.models.document import Chunk, Document, DocumentStatus
 from app.repositories.search import SearchCandidate, SearchIndex
 
@@ -10,8 +15,9 @@ from app.repositories.search import SearchCandidate, SearchIndex
 class SQLiteFtsSearchIndex(SearchIndex):
     """SQLite FTS5 index using weighted BM25 ranking."""
 
-    def __init__(self, session: Session):
+    def __init__(self, session: Session, *, timeout_seconds: int = 10):
         self.session = session
+        self.timeout_seconds = timeout_seconds
 
     def search(
         self,
@@ -50,7 +56,28 @@ class SQLiteFtsSearchIndex(SearchIndex):
             "ORDER BY rank ASC, c.chunk_index ASC "
             "LIMIT :limit OFFSET :offset"
         )
-        ranked_rows = self.session.execute(statement, parameters).mappings().all()
+        connection = self.session.connection()
+        driver_connection = connection.connection.driver_connection
+        deadline = monotonic() + self.timeout_seconds
+        timed_out = False
+
+        def stop_after_deadline() -> int:
+            nonlocal timed_out
+            timed_out = monotonic() >= deadline
+            return int(timed_out)
+
+        if isinstance(driver_connection, sqlite3.Connection):
+            progress_steps = 1 if self.timeout_seconds <= 0 else 1_000
+            driver_connection.set_progress_handler(stop_after_deadline, progress_steps)
+        try:
+            ranked_rows = self.session.execute(statement, parameters).mappings().all()
+        except OperationalError as exc:
+            if timed_out:
+                raise OperationTimeoutError("search") from exc
+            raise
+        finally:
+            if isinstance(driver_connection, sqlite3.Connection):
+                driver_connection.set_progress_handler(None, 0)
         if not ranked_rows:
             return []
 

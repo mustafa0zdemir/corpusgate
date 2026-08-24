@@ -10,6 +10,7 @@ from app.chunking.base import ChunkStrategy
 from app.chunking.tokens import ApproximateTokenEstimator
 from app.core.config import Settings
 from app.core.errors import AppError, DocumentConversionError, DocumentNotFoundError
+from app.core.resources import OperationCapacity
 from app.models.document import Chunk, Document, DocumentStatus
 from app.parsers.base import DocumentParser
 from app.repositories.base import DocumentRepository
@@ -35,6 +36,7 @@ class DocumentService:
         parser: DocumentParser,
         storage: FileStorage,
         chunker: ChunkStrategy,
+        conversion_capacity: OperationCapacity,
     ):
         self.settings = settings
         self.repository = repository
@@ -42,6 +44,7 @@ class DocumentService:
         self.storage = storage
         self.chunker = chunker
         self.token_estimator = ApproximateTokenEstimator()
+        self.conversion_capacity = conversion_capacity
 
     def upload(
         self,
@@ -113,7 +116,7 @@ class DocumentService:
         self.repository.update_status(document, DocumentStatus.processing.value)
         markdown_path: str | None = None
         try:
-            markdown = self.parser.parse(self.storage.resolve(document.storage_path))
+            markdown = self._parse(self.storage.resolve(document.storage_path))
             markdown_path = self.storage.save_markdown(
                 document.id, markdown, cache_key=document.sha256[:12]
             )
@@ -162,7 +165,10 @@ class DocumentService:
         old_markdown_path = document.markdown_path
         new_markdown_path: str | None = None
         try:
-            markdown = self.parser.parse(stored.absolute_path)
+            markdown = self._parse(
+                stored.absolute_path,
+                on_late_complete=lambda: self.storage.delete(stored.relative_path),
+            )
             new_markdown_path = self.storage.save_markdown(
                 document.id, markdown, cache_key=stored.sha256[:12]
             )
@@ -180,13 +186,16 @@ class DocumentService:
                 markdown_tokens=self.token_estimator.estimate(markdown),
                 chunks=chunks,
             )
-        except AppError:
-            self.storage.delete(stored.relative_path)
+        except AppError as exc:
+            if exc.code != "conversion_timeout":
+                self.storage.delete(stored.relative_path)
             self.storage.delete(new_markdown_path)
+            self._log_failure(document, exc, started)
             raise
         except Exception as exc:
             self.storage.delete(stored.relative_path)
             self.storage.delete(new_markdown_path)
+            self._log_failure(document, exc, started)
             raise DocumentConversionError("The document could not be processed.") from exc
 
         self.storage.delete(old_storage_path)
@@ -203,6 +212,18 @@ class DocumentService:
             },
         )
         return UploadResult(document, deduplicated=False, reindexed=True)
+
+    def _parse(
+        self,
+        path,
+        *,
+        on_late_complete=None,
+    ) -> str:
+        return self.conversion_capacity.run(
+            lambda: self.parser.parse(path),
+            timeout=self.settings.conversion_timeout_seconds,
+            on_late_complete=on_late_complete,
+        )
 
     @staticmethod
     def _log_failure(document: Document, exc: Exception, started: float) -> None:

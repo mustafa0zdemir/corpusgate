@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.chunking.base import ChunkStrategy
 from app.core.config import Settings
+from app.core.resources import OperationCapacity
 from app.parsers.base import DocumentParser
 from app.repositories.base import DocumentRepository
 from app.repositories.sqlite import SQLiteDocumentRepository
@@ -37,12 +38,14 @@ def get_document_service(request: Request, repository: RepositoryDependency) -> 
     parser: DocumentParser = request.app.state.parser
     storage: FileStorage = request.app.state.storage
     chunker: ChunkStrategy = request.app.state.chunker
+    conversion_capacity: OperationCapacity = request.app.state.conversion_capacity
     return DocumentService(
         settings=settings,
         repository=repository,
         parser=parser,
         storage=storage,
         chunker=chunker,
+        conversion_capacity=conversion_capacity,
     )
 
 
@@ -57,7 +60,10 @@ def get_search_service(
     return FullTextSearchService(
         request.app.state.settings,
         repository,
-        SQLiteFtsSearchIndex(session),
+        SQLiteFtsSearchIndex(
+            session,
+            timeout_seconds=request.app.state.settings.search_timeout_seconds,
+        ),
     )
 
 
