@@ -79,7 +79,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(
         title=settings.app_name,
         version=settings.app_version,
-        description="Secure, self-hosted document conversion and retrieval gateway.",
+        description="An LLM-ready private document gateway powered by MarkItDown and MCP.",
         lifespan=lifespan,
     )
     app.state.settings = settings

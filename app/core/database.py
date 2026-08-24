@@ -8,6 +8,8 @@ from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.core.config import Settings
 
+SCHEMA_VERSION = 1
+
 
 class Base(DeclarativeBase):
     pass
@@ -35,11 +37,57 @@ class Database:
     def create_schema(self) -> None:
         from app.models.document import Chunk, Document  # noqa: F401
 
+        if self.engine.url.get_backend_name() == "sqlite":
+            self._assert_supported_schema_version()
         Base.metadata.create_all(self.engine)
         if self.engine.url.get_backend_name() == "sqlite":
             self._migrate_sqlite_schema()
             self._backfill_token_counts()
             self._create_fts_index()
+            self._record_schema_version()
+
+    def _assert_supported_schema_version(self) -> None:
+        with self.engine.connect() as connection:
+            has_version_table = connection.exec_driver_sql(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations'"
+            ).first()
+            if not has_version_table:
+                return
+            current = connection.exec_driver_sql(
+                "SELECT COALESCE(MAX(version), 0) FROM schema_migrations"
+            ).scalar_one()
+        if current > SCHEMA_VERSION:
+            raise RuntimeError(
+                f"Database schema version {current} is newer than supported version "
+                f"{SCHEMA_VERSION}. Restore a compatible application version."
+            )
+
+    def _record_schema_version(self) -> None:
+        with self.engine.begin() as connection:
+            connection.exec_driver_sql(
+                "CREATE TABLE IF NOT EXISTS schema_migrations ("
+                "version INTEGER PRIMARY KEY, "
+                "applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+            )
+            connection.exec_driver_sql(
+                "INSERT OR IGNORE INTO schema_migrations(version) VALUES (?)",
+                (SCHEMA_VERSION,),
+            )
+
+    def schema_version(self) -> int:
+        if self.engine.url.get_backend_name() != "sqlite":
+            return SCHEMA_VERSION
+        with self.engine.connect() as connection:
+            has_version_table = connection.exec_driver_sql(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations'"
+            ).first()
+            if not has_version_table:
+                return 0
+            return int(
+                connection.exec_driver_sql(
+                    "SELECT COALESCE(MAX(version), 0) FROM schema_migrations"
+                ).scalar_one()
+            )
 
     def _migrate_sqlite_schema(self) -> None:
         additions = {

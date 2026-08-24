@@ -83,3 +83,8 @@ class DocumentRepository(ABC):
     @abstractmethod
     def delete(self, document: Document) -> None:
         raise NotImplementedError
+
+    @abstractmethod
+    def refresh_search_index(self, document_id: str) -> int:
+        """Rebuild lexical index entries from persisted chunks and return their count."""
+        raise NotImplementedError

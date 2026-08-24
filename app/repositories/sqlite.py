@@ -209,3 +209,38 @@ class SQLiteDocumentRepository(DocumentRepository):
         except Exception:
             self.session.rollback()
             raise
+
+    def refresh_search_index(self, document_id: str) -> int:
+        try:
+            chunks = list(
+                self.session.scalars(
+                    select(Chunk)
+                    .where(Chunk.document_id == document_id)
+                    .order_by(Chunk.chunk_index)
+                )
+            )
+            self.session.execute(
+                text("DELETE FROM chunk_fts WHERE document_id = :document_id"),
+                {"document_id": document_id},
+            )
+            if chunks:
+                self.session.execute(
+                    text(
+                        "INSERT INTO chunk_fts(chunk_id, document_id, heading, content) "
+                        "VALUES (:chunk_id, :document_id, :heading, :content)"
+                    ),
+                    [
+                        {
+                            "chunk_id": chunk.id,
+                            "document_id": document_id,
+                            "heading": chunk.heading or "",
+                            "content": chunk.content,
+                        }
+                        for chunk in chunks
+                    ],
+                )
+            self.session.commit()
+            return len(chunks)
+        except Exception:
+            self.session.rollback()
+            raise

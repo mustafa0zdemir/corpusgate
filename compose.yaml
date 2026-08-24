@@ -23,6 +23,7 @@ services:
     ports:
       - "127.0.0.1:${PDG_PORT:-8000}:8000"
     volumes:
+      - ./documents:/inbox:ro
       - gateway_documents:/data/documents
       - gateway_cache:/data/cache
       - gateway_database:/data/database
@@ -54,10 +55,12 @@ services:
       retries: 3
     networks:
       - backend
+      - edge
 
 networks:
   backend:
     internal: true
+  edge:
 
 volumes:
   gateway_documents:

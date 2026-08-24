@@ -1,4 +1,17 @@
+ARG PDG_VERSION=0.1.0
+ARG PDG_REVISION=unknown
+
 FROM python:3.12-slim-bookworm AS base
+
+ARG PDG_VERSION
+ARG PDG_REVISION
+
+LABEL org.opencontainers.image.title="Private Document Gateway" \
+      org.opencontainers.image.description="An LLM-ready private document gateway powered by MarkItDown and MCP." \
+      org.opencontainers.image.version="$PDG_VERSION" \
+      org.opencontainers.image.revision="$PDG_REVISION" \
+      org.opencontainers.image.source="https://github.com/mustafa0zdemir/private-document-gateway" \
+      org.opencontainers.image.licenses="MIT"
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -13,9 +26,9 @@ WORKDIR /app
 
 RUN groupadd --gid 10001 appuser \
     && useradd --uid 10001 --gid 10001 --create-home --shell /usr/sbin/nologin appuser \
-    && mkdir -p /data/documents /data/cache /data/database /backups \
+    && mkdir -p /data/documents /data/cache /data/database /backups /inbox \
     && chown -R appuser:appuser /data /backups \
-    && chmod 0755 /data /backups \
+    && chmod 0755 /data /backups /inbox \
     && chmod 0700 /data/documents /data/cache /data/database
 
 COPY pyproject.toml README.md LICENSE .env.example ./

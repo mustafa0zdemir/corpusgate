@@ -16,9 +16,16 @@ from app.repositories.sqlite_fts import SQLiteFtsSearchIndex
 from app.retrieval.types import RetrievalFilters
 from app.semantic.runtime import SemanticRuntime
 from app.services.search import FullTextSearchService, RetrievalPage
+from app.services.semantic_index import SemanticIndexService
 
 READ_ONLY = ToolAnnotations(
     readOnlyHint=True,
+    destructiveHint=False,
+    idempotentHint=True,
+    openWorldHint=False,
+)
+INDEX_MAINTENANCE = ToolAnnotations(
+    readOnlyHint=False,
     destructiveHint=False,
     idempotentHint=True,
     openWorldHint=False,
@@ -284,6 +291,57 @@ def create_mcp_server(
         except AppError as exc:
             raise ValueError(exc.message) from exc
         return _page_payload(None, page)
+
+    @server.tool(annotations=INDEX_MAINTENANCE)
+    def refresh_document_index(
+        document_id: Annotated[
+            str, Field(description="UUID of an already stored document to reindex")
+        ],
+        include_semantic: Annotated[
+            bool,
+            Field(description="Also synchronize local vectors when semantic retrieval is enabled"),
+        ] = True,
+    ) -> dict[str, Any]:
+        """Repair one document's indexes from persisted chunks without returning document text.
+
+        Use this only when search data needs maintenance. It does not upload, delete, or
+        re-convert the source document and is idempotent.
+        """
+        with sessions() as session:
+            repository = SQLiteDocumentRepository(session)
+            document = repository.get(document_id)
+            if document is None:
+                raise ValueError("Document not found.")
+            lexical_chunks = repository.refresh_search_index(document_id)
+            semantic_status = "disabled"
+            if include_semantic and semantic_runtime.enabled:
+                if semantic_runtime.available:
+                    try:
+                        result = SemanticIndexService(
+                            settings, repository, semantic_runtime
+                        ).sync_document(document)
+                        semantic_status = "updated"
+                        semantic_counts = {
+                            "embedded": result.embedded_chunks,
+                            "reused": result.reused_chunks,
+                            "deleted": result.deleted_vectors,
+                        }
+                    except Exception:
+                        semantic_status = "unavailable"
+                        semantic_counts = None
+                else:
+                    semantic_status = "unavailable"
+                    semantic_counts = None
+            else:
+                semantic_counts = None
+            return {
+                "status": "indexed",
+                "document_id": document.id,
+                "document_name": document.original_filename,
+                "lexical_chunks": lexical_chunks,
+                "semantic_status": semantic_status,
+                "semantic_counts": semantic_counts,
+            }
 
     return server
 

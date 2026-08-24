@@ -42,12 +42,16 @@ def main() -> None:
                 )
             )
             return
-        _reindex(settings, runtime, force=arguments.force)
+        print(
+            json.dumps(
+                reindex_semantic(settings, runtime, force=arguments.force), separators=(",", ":")
+            )
+        )
     finally:
         runtime.close()
 
 
-def _reindex(settings, runtime, *, force: bool) -> None:
+def reindex_semantic(settings, runtime, *, force: bool = False) -> dict[str, int]:
     database = Database(settings)
     database.create_schema()
     totals = {"documents": 0, "embedded": 0, "reused": 0, "deleted": 0, "failed": 0}
@@ -74,7 +78,7 @@ def _reindex(settings, runtime, *, force: bool) -> None:
                     break
     finally:
         database.dispose()
-    print(json.dumps(totals, separators=(",", ":")))
+    return totals
 
 
 if __name__ == "__main__":

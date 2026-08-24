@@ -34,8 +34,14 @@ def test_mcp_lists_read_only_tools_and_searches(
                 "search_document",
                 "get_relevant_chunks",
                 "get_document_section",
+                "refresh_document_index",
             }
-            assert all(tool.annotations and tool.annotations.read_only_hint for tool in tools.tools)
+            read_only = [tool for tool in tools.tools if tool.name != "refresh_document_index"]
+            assert all(tool.annotations and tool.annotations.read_only_hint for tool in read_only)
+            refresh_tool = next(
+                tool for tool in tools.tools if tool.name == "refresh_document_index"
+            )
+            assert refresh_tool.annotations and not refresh_tool.annotations.read_only_hint
             metadata = await mcp_client.call_tool(
                 "get_document_metadata", {"document_id": uploaded["document_id"]}
             )
@@ -95,5 +101,12 @@ def test_mcp_lists_read_only_tools_and_searches(
             )
             assert section.structured_content["metrics"]["returned_estimated_tokens"] <= 8
             assert section.structured_content["items"][0]["score"] == 0
+            refreshed = await mcp_client.call_tool(
+                "refresh_document_index",
+                {"document_id": uploaded["document_id"], "include_semantic": False},
+            )
+            assert refreshed.is_error is False
+            assert refreshed.structured_content["status"] == "indexed"
+            assert refreshed.structured_content["lexical_chunks"] >= 1
 
     asyncio.run(exercise())

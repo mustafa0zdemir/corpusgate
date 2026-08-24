@@ -4,12 +4,20 @@ build-backend = "hatchling.build"
 
 [project]
 name = "private-document-gateway"
-version = "0.4.0"
-description = "Self-hosted, secure document-to-Markdown gateway for LLM tools"
+dynamic = ["version"]
+description = "An LLM-ready private document gateway powered by MarkItDown and MCP."
 readme = "README.md"
 requires-python = ">=3.12,<3.15"
 license = { text = "MIT" }
 authors = [{ name = "Private Document Gateway contributors" }]
+keywords = ["documents", "markitdown", "mcp", "retrieval", "self-hosted"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Framework :: FastAPI",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Text Processing :: Indexing",
+]
 dependencies = [
   "fastapi>=0.141,<0.142",
   "markitdown[docx,pdf,pptx,xlsx]>=0.1.7,<0.2",
@@ -39,6 +47,15 @@ private-document-gateway-backup = "app.maintenance.backup:main"
 private-document-gateway-reindex-cache = "app.maintenance.reindex:main"
 private-document-gateway-semantic = "app.maintenance.semantic:main"
 private-document-gateway-evaluate = "app.maintenance.evaluate:main"
+private-document-gateway-admin = "app.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/mustafa0zdemir/private-document-gateway"
+Issues = "https://github.com/mustafa0zdemir/private-document-gateway/issues"
+Source = "https://github.com/mustafa0zdemir/private-document-gateway"
+
+[tool.hatch.version]
+path = "app/_version.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]

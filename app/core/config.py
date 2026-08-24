@@ -3,9 +3,11 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
+
+from app._version import __version__
 
 
 class Settings(BaseSettings):
@@ -17,16 +19,16 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "Private Document Gateway"
-    app_version: str = "0.4.0"
     environment: str = "production"
     host: str = "0.0.0.0"
-    port: int = 8000
+    port: int = Field(default=8000, ge=1, le=65_535)
     api_key: SecretStr = Field(min_length=24)
     mcp_auth_tokens: SecretStr | None = None
     mcp_auth_token_file: Path | None = None
 
     data_dir: Path = Path("data")
     documents_dir: Path | None = None
+    inbox_dir: Path = Path("/inbox")
     cache_dir: Path | None = None
     backup_dir: Path | None = None
     database_url: str | None = None
@@ -67,7 +69,7 @@ class Settings(BaseSettings):
     embedding_query_prefix: str = ""
     embedding_passage_prefix: str = ""
     embedding_cache_dir: Path = Path("/models")
-    embedding_offline: bool = False
+    embedding_offline: bool = True
     embedding_batch_size: int = Field(default=32, ge=1, le=512)
     embedding_threads: int = Field(default=2, ge=1, le=64)
     max_concurrent_embeddings: int = Field(default=1, ge=1, le=8)
@@ -106,6 +108,41 @@ class Settings(BaseSettings):
         if normalized not in {"lexical", "semantic", "hybrid"}:
             raise ValueError("default retrieval mode must be lexical, semantic, or hybrid")
         return normalized
+
+    @field_validator("log_level")
+    @classmethod
+    def log_level_must_be_supported(cls, value: str) -> str:
+        normalized = value.strip().upper()
+        if normalized not in {"CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"}:
+            raise ValueError("log level must be CRITICAL, ERROR, WARNING, INFO, or DEBUG")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_contract(self) -> Settings:
+        if self.default_page_size > self.max_page_size:
+            raise ValueError("default page size must not exceed maximum page size")
+        if self.default_search_top_k > self.max_search_top_k:
+            raise ValueError("default search top_k must not exceed maximum search top_k")
+        if self.default_response_max_chars > self.max_response_chars:
+            raise ValueError("default character budget must not exceed maximum character budget")
+        if self.default_response_max_tokens > self.max_response_tokens:
+            raise ValueError("default token budget must not exceed maximum token budget")
+        if (
+            self.max_request_body_mb is not None
+            and self.max_request_body_mb < self.max_file_size_mb
+        ):
+            raise ValueError("maximum request body must not be smaller than maximum file size")
+        if self.semantic_enabled:
+            vector_url = make_url(self.vector_store_url)
+            if vector_url.get_backend_name() not in {"http", "https"} or not vector_url.host:
+                raise ValueError("semantic search requires an HTTP(S) vector store URL")
+            if not self.vector_collection.strip():
+                raise ValueError("semantic search requires a vector collection name")
+        return self
+
+    @property
+    def app_version(self) -> str:
+        return __version__
 
     @property
     def uploads_dir(self) -> Path:
