@@ -10,7 +10,7 @@ from app.embeddings.fastembed import FastEmbedEmbeddingProvider
 from app.vectorstores.base import VectorStore
 from app.vectorstores.qdrant import QdrantVectorStore
 
-logger = logging.getLogger("private_document_gateway.semantic")
+logger = logging.getLogger("corpusgate.semantic")
 
 
 @dataclass(slots=True)

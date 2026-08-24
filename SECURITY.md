@@ -22,6 +22,6 @@ backup persistent data before upgrading and subscribe to repository release noti
 
 ## Deployment boundary
 
-Private Document Gateway protects its own HTTP/MCP surface and file roots. The operator remains
+CorpusGate protects its own HTTP/MCP surface and file roots. The operator remains
 responsible for host patching, Docker security, Tailscale/HTTPS access policy, credential storage,
 backups, and limiting access to the Oracle Cloud account and VM.

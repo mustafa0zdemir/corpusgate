@@ -14,11 +14,11 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
-        env_prefix="PDG_",
+        env_prefix="CORPUSGATE_",
         extra="ignore",
     )
 
-    app_name: str = "Private Document Gateway"
+    app_name: str = "CorpusGate"
     environment: str = "production"
     host: str = "0.0.0.0"
     port: int = Field(default=8000, ge=1, le=65_535)
@@ -76,7 +76,7 @@ class Settings(BaseSettings):
     embedding_timeout_seconds: int = Field(default=180, ge=1, le=3_600)
     embedding_queue_timeout_seconds: int = Field(default=5, ge=0, le=300)
     vector_store_url: str = "http://qdrant:6333"
-    vector_collection: str = "pdg_chunks_v1"
+    vector_collection: str = "corpusgate_chunks_v1"
     vector_store_timeout_seconds: int = Field(default=10, ge=1, le=300)
     semantic_min_score: float = Field(default=0.25, ge=-1.0, le=1.0)
     hybrid_rrf_k: int = Field(default=60, ge=1, le=1_000)

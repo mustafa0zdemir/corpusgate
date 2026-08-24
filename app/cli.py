@@ -270,7 +270,7 @@ def command_restore(settings: Settings, archive: Path, confirm: bool) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="private-document-gateway-admin")
+    parser = argparse.ArgumentParser(prog="corpusgate-admin")
     subcommands = parser.add_subparsers(dest="command", required=True)
     subcommands.add_parser("version")
     subcommands.add_parser("status")
@@ -293,7 +293,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     arguments = build_parser().parse_args()
     if arguments.command == "version":
-        _print({"name": "Private Document Gateway", "version": __version__})
+        _print({"name": "CorpusGate", "version": __version__})
         return
     settings = _settings()
     handlers = {

@@ -40,7 +40,7 @@ def create_mcp_server(
 ) -> MCPServer:
     semantic_runtime = semantic_runtime or SemanticRuntime(enabled=False)
     server = MCPServer(
-        "Private Document Gateway",
+        "CorpusGate",
         version=settings.app_version,
         instructions=(
             "Search before reading sections. Retrieval tools return relevance-ranked, "

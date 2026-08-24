@@ -24,10 +24,10 @@ jobs:
       - run: python scripts/verify_release_contract.py
       - name: Validate Compose and critical setup syntax
         env:
-          PDG_API_KEY: ci-rest-key-0123456789abcdef
-          PDG_MCP_AUTH_TOKENS: ci-mcp-key-0123456789abcdef
+          CORPUSGATE_API_KEY: ci-rest-key-0123456789abcdef
+          CORPUSGATE_MCP_AUTH_TOKENS: ci-mcp-key-0123456789abcdef
         run: |
-          sh -n pdg scripts/setup.sh
+          sh -n corpusgate scripts/setup.sh
           mkdir -p documents
           docker compose config --quiet
           docker compose -f compose.yaml -f compose.semantic.yaml config --quiet
@@ -37,15 +37,15 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Build runtime image
-        run: docker build --target runtime --tag private-document-gateway:ci .
+        run: docker build --target runtime --tag corpusgate:ci .
       - name: Verify non-root metadata and CLI
         run: |
-          test "$(docker image inspect private-document-gateway:ci --format '{{.Config.User}}')" = "10001:10001"
-          docker run --rm private-document-gateway:ci private-document-gateway-admin version
+          test "$(docker image inspect corpusgate:ci --format '{{.Config.User}}')" = "10001:10001"
+          docker run --rm corpusgate:ci corpusgate-admin version
       - name: Scan runtime image
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: private-document-gateway:ci
+          image-ref: corpusgate:ci
           format: table
           exit-code: "1"
           ignore-unfixed: true

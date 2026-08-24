@@ -9,6 +9,8 @@ project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- CorpusGate product identity across the package, CLI, MCP/API metadata, Compose stack, and
+  `CORPUSGATE_` configuration contract.
 - REST upload, metadata, Markdown cache, chunks, lexical search, pagination, and deletion.
 - MarkItDown conversion for PDF, DOCX, PPTX, XLSX, TXT, Markdown, and HTML.
 - Token-aware Markdown chunking, SHA-256 deduplication, SQLite metadata, and FTS5/BM25 search.
@@ -27,5 +29,5 @@ project uses [Semantic Versioning](https://semver.org/).
 - MCP HTTP requests require constant-time compared Bearer tokens; secrets and document content are
   excluded from responses and structured logs.
 
-[Unreleased]: https://github.com/mustafa0zdemir/private-document-gateway/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/mustafa0zdemir/private-document-gateway/releases/tag/v0.1.0
+[Unreleased]: https://github.com/mustafa0zdemir/corpusgate/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/mustafa0zdemir/corpusgate/releases/tag/v0.1.0

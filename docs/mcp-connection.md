@@ -1,6 +1,6 @@
 # MCP connection guide
 
-Private Document Gateway exposes one Streamable HTTP endpoint at `/mcp`. Remote connections must
+CorpusGate exposes one Streamable HTTP endpoint at `/mcp`. Remote connections must
 send `Authorization: Bearer <token>` on every request. REST's `X-API-Key` is intentionally not an
 MCP credential.
 
@@ -15,7 +15,7 @@ tailscale serve status
 ```
 
 The client URL is `https://YOUR-NODE.YOUR-TAILNET.ts.net/mcp`. Add that hostname to
-`PDG_ALLOWED_HOSTS`; never open TCP 8000 in Oracle Cloud.
+`CORPUSGATE_ALLOWED_HOSTS`; never open TCP 8000 in Oracle Cloud.
 
 ## Public HTTPS connection
 
@@ -62,11 +62,11 @@ protocol-level list/call smoke path in process.
 | Symptom | Check |
 |---|---|
 | `401` | Header is exactly `Authorization: Bearer …`; token is current and at least 24 characters. |
-| `421` / host rejection | Remote hostname is in `PDG_ALLOWED_HOSTS`; recreate the gateway. |
+| `421` / host rejection | Remote hostname is in `CORPUSGATE_ALLOWED_HOSTS`; recreate the gateway. |
 | `429` | Slow the client or review the per-client rate limit. |
 | Timeout during streaming | Proxy buffering is disabled and timeouts match `deploy/Caddyfile`. |
-| Semantic request reports `lexical_fallback` | Run `./pdg doctor`, then check model cache and Qdrant health. |
-| Empty search | Run `./pdg list-documents`, confirm `ready`, and try an exact lexical term. |
+| Semantic request reports `lexical_fallback` | Run `./corpusgate doctor`, then check model cache and Qdrant health. |
+| Empty search | Run `./corpusgate list-documents`, confirm `ready`, and try an exact lexical term. |
 
 Protocol references: [MCP Streamable HTTP transport](https://modelcontextprotocol.io/specification/latest/basic/transports#streamable-http)
 and [official Inspector repository](https://github.com/modelcontextprotocol/inspector).

@@ -5,21 +5,21 @@ This demo uses only repository-generated, non-sensitive files.
 ## Lexical installation
 
 ```bash
-./pdg init
-./pdg up
+./corpusgate init
+./corpusgate up
 cp examples/documents/* documents/
-./pdg scan
-./pdg list-documents
-./pdg mcp-smoke
+./corpusgate scan
+./corpusgate list-documents
+./corpusgate mcp-smoke
 ```
 
 Copy a returned Markdown `document_id`, read the REST key from your private `.env`, and run a
 bounded lexical search:
 
 ```bash
-export PDG_CLIENT_API_KEY='value-from-your-private-env'
+export CORPUSGATE_CLIENT_API_KEY='value-from-your-private-env'
 curl --fail --get http://127.0.0.1:8000/api/v1/documents/DOCUMENT_ID/search \
-  -H "X-API-Key: ${PDG_CLIENT_API_KEY}" \
+  -H "X-API-Key: ${CORPUSGATE_CLIENT_API_KEY}" \
   --data-urlencode 'q=private network access' \
   --data 'top_k=2' \
   --data 'max_tokens=40'
@@ -31,11 +31,11 @@ tokens, elapsed search time, and cache use. The returned estimated token count c
 ## Semantic/hybrid installation
 
 ```bash
-./pdg down
-./pdg init --semantic
-./pdg up --semantic
-./pdg reindex --semantic
-./pdg doctor
+./corpusgate down
+./corpusgate init --semantic
+./corpusgate up --semantic
+./corpusgate reindex --semantic
+./corpusgate doctor
 ```
 
 Connect MCP Inspector using [the connection guide](mcp-connection.md), call `search_document` with
@@ -48,7 +48,7 @@ Optional synthetic DOCX/XLSX files can be generated without external data:
 
 ```bash
 python scripts/generate_demo_documents.py documents
-./pdg scan
+./corpusgate scan
 ```
 
 Generation is a contributor/test convenience and requires local Python; product installation does

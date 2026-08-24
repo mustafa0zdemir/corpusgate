@@ -9,7 +9,7 @@ semantic=false
 if [ "${1:-}" = "--semantic" ]; then
     semantic=true
 elif [ "$#" -gt 0 ]; then
-    echo "Usage: ./pdg init [--semantic]" >&2
+    echo "Usage: ./corpusgate init [--semantic]" >&2
     exit 2
 fi
 
@@ -35,11 +35,11 @@ if [ -e .env ]; then
 else
     api_key=$(openssl rand -hex 32)
     mcp_token=$(openssl rand -hex 32)
-    temporary_env=$(mktemp "${TMPDIR:-/tmp}/pdg-env.XXXXXX")
+    temporary_env=$(mktemp "${TMPDIR:-/tmp}/corpusgate-env.XXXXXX")
     while IFS= read -r line || [ -n "$line" ]; do
         case "$line" in
-            PDG_API_KEY=*) printf '%s\n' "PDG_API_KEY=$api_key" ;;
-            PDG_MCP_AUTH_TOKENS=*) printf '%s\n' "PDG_MCP_AUTH_TOKENS=$mcp_token" ;;
+            CORPUSGATE_API_KEY=*) printf '%s\n' "CORPUSGATE_API_KEY=$api_key" ;;
+            CORPUSGATE_MCP_AUTH_TOKENS=*) printf '%s\n' "CORPUSGATE_MCP_AUTH_TOKENS=$mcp_token" ;;
             *) printf '%s\n' "$line" ;;
         esac
     done < .env.example > "$temporary_env"
@@ -51,13 +51,13 @@ else
     echo "Created .env and a production MCP token secret without printing their values."
 fi
 
-port=$(awk -F= '$1 == "PDG_BIND_PORT" { print $2; exit }' .env | tr -d '[:space:]')
+port=$(awk -F= '$1 == "CORPUSGATE_BIND_PORT" { print $2; exit }' .env | tr -d '[:space:]')
 port=${port:-8000}
 case "$port" in
-    *[!0-9]*|'') echo "PDG_BIND_PORT must be a valid port number." >&2; exit 1 ;;
+    *[!0-9]*|'') echo "CORPUSGATE_BIND_PORT must be a valid port number." >&2; exit 1 ;;
 esac
 if command -v lsof >/dev/null 2>&1 && lsof -n -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
-    echo "Port $port is already in use. Set PDG_BIND_PORT in .env." >&2
+    echo "Port $port is already in use. Set CORPUSGATE_BIND_PORT in .env." >&2
     exit 1
 fi
 
@@ -82,7 +82,7 @@ if [ "$(id -u)" -ne 0 ] && [ "$(uname -s)" = "Linux" ]; then
     echo "Production bind mounts may require: sudo chown -R 10001:10001 state backups"
 fi
 if [ "$semantic" = true ]; then
-    echo "Setup complete. Start with: ./pdg up --semantic"
+    echo "Setup complete. Start with: ./corpusgate up --semantic"
 else
-    echo "Setup complete. Start with: ./pdg up"
+    echo "Setup complete. Start with: ./corpusgate up"
 fi

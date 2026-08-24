@@ -41,7 +41,7 @@ class JsonFormatter(logging.Formatter):
 
 
 def configure_logging(settings: Settings) -> None:
-    logger = logging.getLogger("private_document_gateway")
+    logger = logging.getLogger("corpusgate")
     logger.handlers.clear()
     handler = logging.StreamHandler(sys.stderr)
     handler.setFormatter(JsonFormatter())
@@ -54,7 +54,7 @@ def configure_logging(settings: Settings) -> None:
 class RequestLoggingMiddleware:
     def __init__(self, app: ASGIApp):
         self.app = app
-        self.logger = logging.getLogger("private_document_gateway.http")
+        self.logger = logging.getLogger("corpusgate.http")
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":

@@ -1,60 +1,60 @@
-name: private-document-gateway
+name: corpusgate
 
 services:
   gateway:
     build:
       context: .
       target: runtime
-    image: private-document-gateway:${PDG_IMAGE_TAG:-0.1.0}
+    image: corpusgate:${CORPUSGATE_IMAGE_TAG:-0.1.0}
     init: true
     restart: unless-stopped
     env_file:
       - path: .env
         required: false
     environment:
-      PDG_HOST: 0.0.0.0
-      PDG_PORT: 8000
-      PDG_DATA_DIR: /data
-      PDG_DOCUMENTS_DIR: /data/documents
-      PDG_CACHE_DIR: /data/cache
-      PDG_BACKUP_DIR: /backups
-      PDG_DATABASE_URL: sqlite:////data/database/gateway.db
-      PDG_API_KEY: "${PDG_API_KEY:?Set PDG_API_KEY in .env}"
-      PDG_MCP_AUTH_TOKENS: ""
-      PDG_MCP_AUTH_TOKEN_FILE: /run/secrets/mcp_auth_token
-      PDG_ALLOWED_HOSTS: "${PDG_ALLOWED_HOSTS:?Set exact private/public hosts in .env}"
-      PDG_PUBLIC_BASE_URL: "${PDG_PUBLIC_BASE_URL:-}"
-      PDG_LOG_LEVEL: "${PDG_LOG_LEVEL:-INFO}"
+      CORPUSGATE_HOST: 0.0.0.0
+      CORPUSGATE_PORT: 8000
+      CORPUSGATE_DATA_DIR: /data
+      CORPUSGATE_DOCUMENTS_DIR: /data/documents
+      CORPUSGATE_CACHE_DIR: /data/cache
+      CORPUSGATE_BACKUP_DIR: /backups
+      CORPUSGATE_DATABASE_URL: sqlite:////data/database/gateway.db
+      CORPUSGATE_API_KEY: "${CORPUSGATE_API_KEY:?Set CORPUSGATE_API_KEY in .env}"
+      CORPUSGATE_MCP_AUTH_TOKENS: ""
+      CORPUSGATE_MCP_AUTH_TOKEN_FILE: /run/secrets/mcp_auth_token
+      CORPUSGATE_ALLOWED_HOSTS: "${CORPUSGATE_ALLOWED_HOSTS:?Set exact private/public hosts in .env}"
+      CORPUSGATE_PUBLIC_BASE_URL: "${CORPUSGATE_PUBLIC_BASE_URL:-}"
+      CORPUSGATE_LOG_LEVEL: "${CORPUSGATE_LOG_LEVEL:-INFO}"
     secrets:
       - mcp_auth_token
     ports:
-      - "127.0.0.1:${PDG_BIND_PORT:-8000}:8000"
+      - "127.0.0.1:${CORPUSGATE_BIND_PORT:-8000}:8000"
     expose:
       - "8000"
     volumes:
       - type: bind
-        source: ${PDG_INBOX_HOST_PATH:-./documents}
+        source: ${CORPUSGATE_INBOX_HOST_PATH:-./documents}
         target: /inbox
         read_only: true
         bind:
           create_host_path: false
       - type: bind
-        source: ${PDG_DOCUMENTS_HOST_PATH:-./state/documents}
+        source: ${CORPUSGATE_DOCUMENTS_HOST_PATH:-./state/documents}
         target: /data/documents
         bind:
           create_host_path: false
       - type: bind
-        source: ${PDG_CACHE_HOST_PATH:-./state/cache}
+        source: ${CORPUSGATE_CACHE_HOST_PATH:-./state/cache}
         target: /data/cache
         bind:
           create_host_path: false
       - type: bind
-        source: ${PDG_DATABASE_HOST_PATH:-./state/database}
+        source: ${CORPUSGATE_DATABASE_HOST_PATH:-./state/database}
         target: /data/database
         bind:
           create_host_path: false
       - type: bind
-        source: ${PDG_BACKUP_HOST_PATH:-./backups}
+        source: ${CORPUSGATE_BACKUP_HOST_PATH:-./backups}
         target: /backups
         bind:
           create_host_path: false
@@ -66,13 +66,13 @@ services:
     cap_drop:
       - ALL
     pids_limit: 256
-    cpus: "${PDG_CPU_LIMIT:-2.0}"
-    mem_limit: "${PDG_MEMORY_LIMIT:-2g}"
+    cpus: "${CORPUSGATE_CPU_LIMIT:-2.0}"
+    mem_limit: "${CORPUSGATE_MEMORY_LIMIT:-2g}"
     logging:
       driver: json-file
       options:
-        max-size: "${PDG_LOG_MAX_SIZE:-10m}"
-        max-file: "${PDG_LOG_MAX_FILES:-5}"
+        max-size: "${CORPUSGATE_LOG_MAX_SIZE:-10m}"
+        max-file: "${CORPUSGATE_LOG_MAX_FILES:-5}"
     healthcheck:
       test:
         - CMD
@@ -97,8 +97,8 @@ services:
         condition: service_healthy
     environment:
       CADDY_EMAIL: "${CADDY_EMAIL:-}"
-      PDG_PUBLIC_DOMAIN: "${PDG_PUBLIC_DOMAIN:-}"
-      PDG_PROXY_MAX_BODY_SIZE: "${PDG_PROXY_MAX_BODY_SIZE:-27MB}"
+      CORPUSGATE_PUBLIC_DOMAIN: "${CORPUSGATE_PUBLIC_DOMAIN:-}"
+      CORPUSGATE_PROXY_MAX_BODY_SIZE: "${CORPUSGATE_PROXY_MAX_BODY_SIZE:-27MB}"
     ports:
       - "80:80"
       - "443:443"
@@ -139,4 +139,4 @@ volumes:
 
 secrets:
   mcp_auth_token:
-    file: ${PDG_MCP_AUTH_TOKEN_HOST_FILE:-./secrets/mcp_auth_token}
+    file: ${CORPUSGATE_MCP_AUTH_TOKEN_HOST_FILE:-./secrets/mcp_auth_token}

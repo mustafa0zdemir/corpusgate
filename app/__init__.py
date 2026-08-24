@@ -1,4 +1,4 @@
-"""Private Document Gateway application package."""
+"""CorpusGate application package."""
 
 from app._version import __version__
 

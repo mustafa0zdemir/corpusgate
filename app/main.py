@@ -24,7 +24,7 @@ from app.parsers.markitdown import MarkItDownDocumentParser
 from app.semantic.runtime import create_semantic_runtime
 from app.storage.local import LocalFileStorage
 
-logger = logging.getLogger("private_document_gateway")
+logger = logging.getLogger("corpusgate")
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:

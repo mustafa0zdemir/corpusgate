@@ -1,11 +1,11 @@
-# Private Document Gateway
+# CorpusGate
 
 **An LLM-ready private document gateway powered by MarkItDown and MCP.**
 
 Convert, index and retrieve private documents for AI tools without sending document content to
 third-party services.
 
-Private Document Gateway is a general-purpose, self-hosted Document MCP Server for individuals and
+CorpusGate is a general-purpose, self-hosted Document MCP Server for individuals and
 teams that need controlled AI-tool access to documents on their own infrastructure. MarkItDown
 converts supported files into reusable Markdown. The gateway then chunks and indexes that Markdown,
 and MCP returns only the relevant, source-attributed chunks under server-enforced budgets.
@@ -70,15 +70,15 @@ stopping other documents.
 Requirements: Docker Engine with Compose v2 and OpenSSL. Host Python is not required.
 
 ```bash
-git clone https://github.com/mustafa0zdemir/private-document-gateway.git
-cd private-document-gateway
-./pdg init
-./pdg up
+git clone https://github.com/mustafa0zdemir/corpusgate.git
+cd corpusgate
+./corpusgate init
+./corpusgate up
 curl --fail http://127.0.0.1:8000/health
-./pdg doctor
+./corpusgate doctor
 ```
 
-`./pdg init` creates persistent/inbox folders, copies `.env.example` only when `.env` does not
+`./corpusgate init` creates persistent/inbox folders, copies `.env.example` only when `.env` does not
 exist, generates separate random REST/MCP credentials without printing them, checks Docker/Compose
 and the selected port, and validates Compose. It never overwrites an existing `.env`.
 
@@ -89,8 +89,8 @@ placeholders with different `openssl rand -hex 32` values, create `documents/`, 
 Optional local semantic/hybrid retrieval is also one operation after initialization:
 
 ```bash
-./pdg init --semantic
-./pdg up --semantic
+./corpusgate init --semantic
+./corpusgate up --semantic
 ```
 
 The first semantic start downloads the model into a persistent cache and then starts the gateway
@@ -103,8 +103,8 @@ The simplest operator workflow uses the read-only host inbox:
 
 ```bash
 cp examples/documents/* documents/
-./pdg scan
-./pdg list-documents
+./corpusgate scan
+./corpusgate list-documents
 ```
 
 The scan skips hidden/system/temporary files, unsupported types, directories, and symlinks. Input
@@ -115,9 +115,9 @@ For a complete lexical→semantic/hybrid→MCP walkthrough, use the
 REST upload is available for applications:
 
 ```bash
-export PDG_CLIENT_API_KEY='value-from-your-env'
+export CORPUSGATE_CLIENT_API_KEY='value-from-your-env'
 curl --fail -X POST http://127.0.0.1:8000/api/v1/documents \
-  -H "X-API-Key: ${PDG_CLIENT_API_KEY}" \
+  -H "X-API-Key: ${CORPUSGATE_CLIENT_API_KEY}" \
   -F 'file=@examples/documents/private-network-guide.md'
 ```
 
@@ -235,21 +235,21 @@ without echoing secret values.
 Operational commands:
 
 ```bash
-./pdg version
-./pdg status
-./pdg doctor
-./pdg mcp-smoke
-./pdg scan
-./pdg reindex
-./pdg reindex --semantic
-./pdg list-documents --limit 20 --offset 0
+./corpusgate version
+./corpusgate status
+./corpusgate doctor
+./corpusgate mcp-smoke
+./corpusgate scan
+./corpusgate reindex
+./corpusgate reindex --semantic
+./corpusgate list-documents --limit 20 --offset 0
 ```
 
 ## Backup and restore
 
 ```bash
-./pdg backup
-./pdg restore /backups/pdg-backup-TIMESTAMP.tar.gz --confirm-restore
+./corpusgate backup
+./corpusgate restore /backups/corpusgate-backup-TIMESTAMP.tar.gz --confirm-restore
 ```
 
 Restore replaces current persistent data and therefore requires an explicit confirmation flag and
@@ -273,15 +273,15 @@ no image has been published by this sprint.
 
 ## Troubleshooting
 
-- `./pdg doctor`: validates config, storage permissions, SQLite/schema, disk, optional model/vector
+- `./corpusgate doctor`: validates config, storage permissions, SQLite/schema, disk, optional model/vector
   state, service readiness, and version without dumping secrets.
 - `401`: use REST `X-API-Key` or MCP `Authorization: Bearer`, not the other credential type.
-- Host rejection: add the exact Tailscale/domain host to `PDG_ALLOWED_HOSTS` and recreate gateway.
+- Host rejection: add the exact Tailscale/domain host to `CORPUSGATE_ALLOWED_HOSTS` and recreate gateway.
 - `507`: free disk or review the reserved disk threshold before retrying ingestion.
 - `lexical_fallback`: inspect model cache and Qdrant health; lexical retrieval remains available.
 - Conversion failure: confirm supported extension, MIME/signature, UTF-8/Office archive integrity,
   size, encryption, and whether the PDF contains text.
-- Logs: `./pdg logs --tail=100`; sanitize output before sharing.
+- Logs: `./corpusgate logs --tail=100`; sanitize output before sharing.
 
 See [SUPPORT.md](SUPPORT.md) and the deployment-specific troubleshooting guide before opening an
 issue.
@@ -327,5 +327,5 @@ and use only synthetic non-sensitive fixtures. Security reports must use the pri
 
 ## License
 
-Private Document Gateway is available under the existing [MIT License](LICENSE). Third-party
+CorpusGate is available under the existing [MIT License](LICENSE). Third-party
 libraries and the optional embedding model retain their own licenses.

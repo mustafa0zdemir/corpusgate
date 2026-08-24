@@ -16,6 +16,14 @@ def test_version_has_one_canonical_release_value() -> None:
     assert __version__ == "0.1.0"
 
 
+def test_product_identity_and_environment_contract_are_corpusgate() -> None:
+    settings = Settings(api_key=SecretStr("a" * 24))
+
+    assert settings.app_name == "CorpusGate"
+    assert Settings.model_config["env_prefix"] == "CORPUSGATE_"
+    assert settings.vector_collection == "corpusgate_chunks_v1"
+
+
 @pytest.mark.parametrize(
     ("override", "message"),
     [

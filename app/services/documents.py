@@ -18,7 +18,7 @@ from app.services.file_validation import validate_file_signature, validate_uploa
 from app.services.semantic_index import SemanticIndexService
 from app.storage.base import FileStorage, StoredFile
 
-logger = logging.getLogger("private_document_gateway.documents")
+logger = logging.getLogger("corpusgate.documents")
 
 
 @dataclass(frozen=True, slots=True)

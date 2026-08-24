@@ -19,7 +19,7 @@ class OperationCapacity:
         self._semaphore = BoundedSemaphore(capacity)
         self._executor = ThreadPoolExecutor(
             max_workers=capacity,
-            thread_name_prefix=f"pdg-{operation}",
+            thread_name_prefix=f"corpusgate-{operation}",
         )
 
     def run(

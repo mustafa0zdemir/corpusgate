@@ -7,7 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
-os.environ.setdefault("PDG_API_KEY", "test-api-key-0123456789abcdef")
+os.environ.setdefault("CORPUSGATE_API_KEY", "test-api-key-0123456789abcdef")
 
 from app.core.config import Settings  # noqa: E402
 from app.main import create_app  # noqa: E402

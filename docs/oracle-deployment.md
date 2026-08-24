@@ -1,6 +1,6 @@
 # Oracle Cloud Ubuntu production deployment
 
-Bu rehber Private Document Gateway `0.1.x` sürümünü tek Oracle Cloud Ubuntu VM üzerinde kalıcı
+Bu rehber CorpusGate `0.1.x` sürümünü tek Oracle Cloud Ubuntu VM üzerinde kalıcı
 ve güvenli çalıştırır. Önerilen erişim Tailscale'dir. Public domain yalnızca gerçekten gerekliyse
 Caddy profiliyle açılmalıdır.
 
@@ -51,17 +51,17 @@ komutlar `sudo docker` ile de çalışır.
 ## 3. Repo ve kalıcı klasörler
 
 ```bash
-sudo install -d -o "$USER" -g "$USER" -m 0750 /opt/private-document-gateway
-git clone https://github.com/mustafa0zdemir/private-document-gateway.git \
-  /opt/private-document-gateway
-cd /opt/private-document-gateway
+sudo install -d -o "$USER" -g "$USER" -m 0750 /opt/corpusgate
+git clone https://github.com/mustafa0zdemir/corpusgate.git \
+  /opt/corpusgate
+cd /opt/corpusgate
 
 sudo install -d -o 10001 -g 10001 -m 0700 \
-  /srv/private-document-gateway/documents \
-  /srv/private-document-gateway/cache \
-  /srv/private-document-gateway/database \
-  /srv/private-document-gateway/backups
-install -d -m 0750 /srv/private-document-gateway/inbox
+  /srv/corpusgate/documents \
+  /srv/corpusgate/cache \
+  /srv/corpusgate/database \
+  /srv/corpusgate/backups
+install -d -m 0750 /srv/corpusgate/inbox
 install -d -m 0700 secrets
 ```
 
@@ -79,20 +79,20 @@ openssl rand -hex 32 > secrets/mcp_auth_token
 chmod 0600 .env secrets/mcp_auth_token
 ```
 
-İlk komutun stdout değerini `.env` içindeki `PDG_API_KEY` alanına yazın. İkinci değer yalnızca
+İlk komutun stdout değerini `.env` içindeki `CORPUSGATE_API_KEY` alanına yazın. İkinci değer yalnızca
 Docker secret dosyasında kalır. Production `.env` için en az şu alanları düzenleyin:
 
 ```dotenv
-PDG_API_KEY=REPLACE_WITH_REST_KEY
-PDG_MCP_AUTH_TOKENS=
-PDG_MCP_AUTH_TOKEN_HOST_FILE=./secrets/mcp_auth_token
-PDG_INBOX_HOST_PATH=/srv/private-document-gateway/inbox
-PDG_DOCUMENTS_HOST_PATH=/srv/private-document-gateway/documents
-PDG_CACHE_HOST_PATH=/srv/private-document-gateway/cache
-PDG_DATABASE_HOST_PATH=/srv/private-document-gateway/database
-PDG_BACKUP_HOST_PATH=/srv/private-document-gateway/backups
-PDG_ALLOWED_HOSTS=localhost,localhost:*,127.0.0.1,127.0.0.1:*,YOUR_PRIVATE_HOST
-PDG_LOG_LEVEL=INFO
+CORPUSGATE_API_KEY=REPLACE_WITH_REST_KEY
+CORPUSGATE_MCP_AUTH_TOKENS=
+CORPUSGATE_MCP_AUTH_TOKEN_HOST_FILE=./secrets/mcp_auth_token
+CORPUSGATE_INBOX_HOST_PATH=/srv/corpusgate/inbox
+CORPUSGATE_DOCUMENTS_HOST_PATH=/srv/corpusgate/documents
+CORPUSGATE_CACHE_HOST_PATH=/srv/corpusgate/cache
+CORPUSGATE_DATABASE_HOST_PATH=/srv/corpusgate/database
+CORPUSGATE_BACKUP_HOST_PATH=/srv/corpusgate/backups
+CORPUSGATE_ALLOWED_HOSTS=localhost,localhost:*,127.0.0.1,127.0.0.1:*,YOUR_PRIVATE_HOST
+CORPUSGATE_LOG_LEVEL=INFO
 ```
 
 Token rotation sırasında secret dosyasına `new-token,previous-token` yazıp gateway'i yeniden
@@ -111,7 +111,7 @@ docker compose -f compose.prod.yaml up -d gateway
 docker compose -f compose.prod.yaml ps
 curl --fail http://127.0.0.1:8000/health
 curl --fail http://127.0.0.1:8000/ready
-docker compose -f compose.prod.yaml exec -T gateway private-document-gateway-admin doctor
+docker compose -f compose.prod.yaml exec -T gateway corpusgate-admin doctor
 ```
 
 Beklenen cevaplar sırasıyla `{"status":"ok"}` ve `{"status":"ready"}` biçimindedir. `health`
@@ -128,7 +128,7 @@ sudo tailscale serve --bg --https=443 http://127.0.0.1:8000
 tailscale serve status
 ```
 
-Serve URL'sindeki MagicDNS host'unu `PDG_ALLOWED_HOSTS` içine ekleyip gateway'i yeniden oluşturun.
+Serve URL'sindeki MagicDNS host'unu `CORPUSGATE_ALLOWED_HOSTS` içine ekleyip gateway'i yeniden oluşturun.
 Tailnet ACL ile yalnızca gereken kullanıcı/cihazların 443'e erişmesine izin verin. Funnel
 kullanmayın; Funnel servisi public internete açar.
 
@@ -137,7 +137,7 @@ MCP istemci örneği:
 ```json
 {
   "mcpServers": {
-    "private-documents": {
+    "corpusgate": {
       "type": "streamable-http",
       "url": "https://YOUR-NODE.YOUR-TAILNET.ts.net/mcp",
       "headers": {
@@ -154,10 +154,10 @@ Domain'in A/AAAA kaydını VM'e yönlendirin. OCI NSG'de 80/TCP ve 443/TCP açı
 kalır. `.env` alanlarını doldurun:
 
 ```dotenv
-PDG_PUBLIC_DOMAIN=documents.example.com
-PDG_PUBLIC_BASE_URL=https://documents.example.com
+CORPUSGATE_PUBLIC_DOMAIN=documents.example.com
+CORPUSGATE_PUBLIC_BASE_URL=https://documents.example.com
 CADDY_EMAIL=admin@example.com
-PDG_ALLOWED_HOSTS=documents.example.com,documents.example.com:*
+CORPUSGATE_ALLOWED_HOSTS=documents.example.com,documents.example.com:*
 ```
 
 Ardından public profili başlatın:
@@ -191,12 +191,12 @@ Güncelleme:
 ```bash
 docker compose -f compose.prod.yaml stop gateway
 docker compose -f compose.prod.yaml run --rm --no-deps gateway \
-  private-document-gateway-admin backup
+  corpusgate-admin backup
 git pull --ff-only
 docker compose -f compose.prod.yaml build --pull gateway
 docker compose -f compose.prod.yaml up -d gateway
 curl --fail http://127.0.0.1:8000/ready
-docker compose -f compose.prod.yaml exec -T gateway private-document-gateway-admin status
+docker compose -f compose.prod.yaml exec -T gateway corpusgate-admin status
 ```
 
 ## 9. Backup, restore ve cache recovery
@@ -206,9 +206,9 @@ Tutarlı uygulama snapshot'ı için yazmaları durdurup one-off bakım komutunu 
 ```bash
 docker compose -f compose.prod.yaml stop gateway
 docker compose -f compose.prod.yaml run --rm --no-deps gateway \
-  private-document-gateway-admin backup
+  corpusgate-admin backup
 docker compose -f compose.prod.yaml start gateway
-sudo tar -tzf /srv/private-document-gateway/backups/pdg-backup-TIMESTAMP.tar.gz
+sudo tar -tzf /srv/corpusgate/backups/corpusgate-backup-TIMESTAMP.tar.gz
 ```
 
 Arşiv documents, Markdown cache, SQLite'ın online backup snapshot'ı, manifest ve secretsız
@@ -220,8 +220,8 @@ Restore mevcut kalıcı veriyi değiştirir; gateway kapalıyken açık onay bay
 ```bash
 docker compose -f compose.prod.yaml stop gateway
 docker compose -f compose.prod.yaml run --rm --no-deps gateway \
-  private-document-gateway-admin restore \
-  /backups/pdg-backup-TIMESTAMP.tar.gz --confirm-restore
+  corpusgate-admin restore \
+  /backups/corpusgate-backup-TIMESTAMP.tar.gz --confirm-restore
 docker compose -f compose.prod.yaml start gateway
 curl --fail http://127.0.0.1:8000/ready
 ```
@@ -231,7 +231,7 @@ Yalnızca Markdown cache kaybolduysa raw documents ve SQLite metadata'dan yenide
 ```bash
 docker compose -f compose.prod.yaml stop gateway
 docker compose -f compose.prod.yaml run --rm --no-deps gateway \
-  private-document-gateway-reindex-cache
+  corpusgate-reindex-cache
 docker compose -f compose.prod.yaml start gateway
 ```
 
@@ -257,12 +257,12 @@ model taşıma adımları [semantic search rehberindedir](semantic-search.md).
 
 ## 11. Sorun giderme
 
-- `invalid owner` / `not writable`: `/srv/private-document-gateway` alt klasörlerini
+- `invalid owner` / `not writable`: `/srv/corpusgate` alt klasörlerini
   `10001:10001`, `0700` yapın.
 - `401`: MCP'de `Authorization: Bearer ...`; REST'te `X-API-Key` kullanıldığını doğrulayın.
-- `421` veya host hatası: URL host'unu exact biçimde `PDG_ALLOWED_HOSTS` listesine ekleyin.
+- `421` veya host hatası: URL host'unu exact biçimde `CORPUSGATE_ALLOWED_HOSTS` listesine ekleyin.
 - `429`: istemci çağrı hızını düşürün veya kontrollü biçimde rate limit ayarını değiştirin.
-- `507`: disk alanı ile `PDG_MIN_FREE_DISK_MB` rezervini kontrol edin.
+- `507`: disk alanı ile `CORPUSGATE_MIN_FREE_DISK_MB` rezervini kontrol edin.
 - `unhealthy`: `docker compose ... logs gateway`, `/health` ve `/ready` cevaplarını ayrı inceleyin.
 - Caddy sertifika sorunu: DNS, OCI 80/443 kuralları ve `CADDY_EMAIL` değerini doğrulayın.
 - ARM64 build sorunu: `uname -m`, `docker version` ve `docker buildx inspect` çıktılarını kontrol

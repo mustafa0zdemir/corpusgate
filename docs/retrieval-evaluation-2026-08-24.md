@@ -46,7 +46,7 @@ Reproduce with:
 ```bash
 docker compose -f compose.prod.yaml -f compose.semantic.yaml run --rm \
   -v "$PWD/evaluation:/evaluation:ro" gateway \
-  private-document-gateway-evaluate /evaluation/dataset.json
+  corpusgate-evaluate /evaluation/dataset.json
 ```
 
 Results vary with CPU, model version, Qdrant cache state, corpus, and thresholds. Re-run this

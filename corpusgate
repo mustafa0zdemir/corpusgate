@@ -1,0 +1,74 @@
+#!/bin/sh
+set -eu
+
+project_root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+cd "$project_root"
+
+command_name=${1:-help}
+case "$command_name" in
+    init)
+        shift
+        exec ./scripts/setup.sh "$@"
+        ;;
+    up)
+        shift
+        if [ "${1:-}" = "--semantic" ]; then
+            shift
+            [ "$#" -eq 0 ] || { echo "Usage: ./corpusgate up [--semantic]" >&2; exit 2; }
+            docker compose -f compose.yaml -f compose.semantic.yaml build gateway model-downloader
+            docker compose -f compose.yaml -f compose.semantic.yaml \
+                --profile semantic-setup run --rm model-downloader
+            exec docker compose -f compose.yaml -f compose.semantic.yaml up -d
+        fi
+        [ "$#" -eq 0 ] || { echo "Usage: ./corpusgate up [--semantic]" >&2; exit 2; }
+        exec docker compose up -d --build
+        ;;
+    down)
+        shift
+        [ "$#" -eq 0 ] || { echo "Usage: ./corpusgate down" >&2; exit 2; }
+        exec docker compose -f compose.yaml -f compose.semantic.yaml down
+        ;;
+    logs)
+        shift
+        exec docker compose logs "$@" gateway
+        ;;
+    version)
+        shift
+        exec docker compose run --rm --no-deps gateway corpusgate-admin version "$@"
+        ;;
+    status|doctor|mcp-smoke|scan|reindex|list-documents|backup)
+        shift
+        exec docker compose exec -T gateway corpusgate-admin "$command_name" "$@"
+        ;;
+    restore)
+        shift
+        if docker compose ps --status running --services | grep -qx gateway; then
+            echo "Stop the gateway with './corpusgate down' before restore." >&2
+            exit 1
+        fi
+        exec docker compose run --rm --no-deps gateway \
+            corpusgate-admin restore "$@"
+        ;;
+    help|-h|--help)
+        cat <<'EOF'
+CorpusGate operations
+
+  ./corpusgate init [--semantic]       Prepare a safe local configuration
+  ./corpusgate up [--semantic]         Start lexical or local semantic retrieval
+  ./corpusgate status                  Check the running service
+  ./corpusgate doctor                  Validate configuration and persistent storage
+  ./corpusgate mcp-smoke               Authenticate, list tools, and call list_documents
+  ./corpusgate scan                    Import supported files from ./documents
+  ./corpusgate list-documents          List indexed document metadata
+  ./corpusgate reindex [--semantic]    Rebuild cache/index data
+  ./corpusgate backup                  Create a portable backup
+  ./corpusgate restore FILE --confirm-restore
+  ./corpusgate logs [OPTIONS]          Show gateway logs
+  ./corpusgate down                    Stop the stack
+EOF
+        ;;
+    *)
+        echo "Unknown command: $command_name. Run ./corpusgate help." >&2
+        exit 2
+        ;;
+esac

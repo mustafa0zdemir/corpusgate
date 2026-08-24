@@ -1,16 +1,16 @@
-ARG PDG_VERSION=0.1.0
-ARG PDG_REVISION=unknown
+ARG CORPUSGATE_VERSION=0.1.0
+ARG CORPUSGATE_REVISION=unknown
 
 FROM python:3.12-slim-bookworm AS base
 
-ARG PDG_VERSION
-ARG PDG_REVISION
+ARG CORPUSGATE_VERSION
+ARG CORPUSGATE_REVISION
 
-LABEL org.opencontainers.image.title="Private Document Gateway" \
+LABEL org.opencontainers.image.title="CorpusGate" \
       org.opencontainers.image.description="An LLM-ready private document gateway powered by MarkItDown and MCP." \
-      org.opencontainers.image.version="$PDG_VERSION" \
-      org.opencontainers.image.revision="$PDG_REVISION" \
-      org.opencontainers.image.source="https://github.com/mustafa0zdemir/private-document-gateway" \
+      org.opencontainers.image.version="$CORPUSGATE_VERSION" \
+      org.opencontainers.image.revision="$CORPUSGATE_REVISION" \
+      org.opencontainers.image.source="https://github.com/mustafa0zdemir/corpusgate" \
       org.opencontainers.image.licenses="MIT"
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

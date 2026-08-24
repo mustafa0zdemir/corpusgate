@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for improving Private Document Gateway. Keep changes focused on the self-hosted
+Thank you for improving CorpusGate. Keep changes focused on the self-hosted
 document conversion, indexing, retrieval, security, and operations scope.
 
 ## Development workflow

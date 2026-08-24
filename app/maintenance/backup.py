@@ -33,10 +33,10 @@ class BackupService:
         backup_root.mkdir(parents=True, exist_ok=True, mode=0o700)
         backup_root = backup_root.resolve()
         timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-        archive = backup_root / f"pdg-backup-{timestamp}-{uuid4().hex[:8]}.tar.gz"
+        archive = backup_root / f"corpusgate-backup-{timestamp}-{uuid4().hex[:8]}.tar.gz"
         temporary_archive = archive.with_suffix(".tar.gz.part")
 
-        with TemporaryDirectory(prefix="pdg-backup-", dir=backup_root) as temporary:
+        with TemporaryDirectory(prefix="corpusgate-backup-", dir=backup_root) as temporary:
             staging = Path(temporary)
             document_count = _copy_tree_secure(
                 self.settings.documents_root.resolve(), staging / "documents"
@@ -78,7 +78,7 @@ class BackupService:
         if backup_root not in archive.parents:
             raise ValueError("The restore archive must be inside the configured backup directory.")
 
-        with TemporaryDirectory(prefix="pdg-restore-", dir=backup_root) as temporary:
+        with TemporaryDirectory(prefix="corpusgate-restore-", dir=backup_root) as temporary:
             staging = Path(temporary)
             with tarfile.open(archive, "r:gz") as bundle:
                 _validate_archive(bundle)

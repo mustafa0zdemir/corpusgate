@@ -18,7 +18,7 @@ Varsayılan model
 [`sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`](https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2)
 384 boyut üretir, 50 dili kapsar ve Apache-2.0 lisanslıdır. FastEmbed modeli CPU'da ONNX Runtime
 ile çalıştırır. Query/passage prefix gerektiren başka modeller için
-`PDG_EMBEDDING_QUERY_PREFIX` ve `PDG_EMBEDDING_PASSAGE_PREFIX` provider girişinde uygulanır.
+`CORPUSGATE_EMBEDDING_QUERY_PREFIX` ve `CORPUSGATE_EMBEDDING_PASSAGE_PREFIX` provider girişinde uygulanır.
 
 Uygulamada cloud embedding istemcisi ve telemetry yoktur. `DO_NOT_TRACK=1`,
 `HF_HUB_DISABLE_TELEMETRY=1` ve `SCARF_NO_ANALYTICS=true` image'da varsayılandır. Model indirme
@@ -38,7 +38,7 @@ docker compose -f compose.prod.yaml -f compose.semantic.yaml ps
 
 Air-gapped hedefte aynı `model_cache` volume içeriğini internet erişimli ve aynı mimarideki bir
 hazırlık hostundan kontrollü biçimde taşıyın. Cache hedefte `/models` olarak mount edilmeli ve
-gateway için okunabilir olmalıdır. Ardından `PDG_EMBEDDING_OFFLINE=true` ile başlatın. Model
+gateway için okunabilir olmalıdır. Ardından `CORPUSGATE_EMBEDDING_OFFLINE=true` ile başlatın. Model
 dosyaları yoksa gateway kapanmaz; semantic/hybrid çağrı `lexical_fallback` döndürür.
 
 Kapatmak için `compose.semantic.yaml` dosyasını Compose çağrısından çıkarın. Böylece Qdrant,
@@ -48,26 +48,26 @@ FastEmbed ve model ağırlıkları temel image için zorunlu olmaz.
 
 | Değişken | Varsayılan | Anlamı |
 |---|---|---|
-| `PDG_SEMANTIC_ENABLED` | `false` | Semantic runtime'ı açar |
-| `PDG_DEFAULT_RETRIEVAL_MODE` | `lexical` | Parametresiz arama modu |
-| `PDG_SEMANTIC_FALLBACK_ENABLED` | `true` | Semantic hata durumunda lexical devam |
-| `PDG_EMBEDDING_MODEL` | multilingual MiniLM | FastEmbed model adı |
-| `PDG_EMBEDDING_MODEL_VERSION` | `fastembed-0.8.0-onnx-q` | Index uyumluluk etiketi |
-| `PDG_EMBEDDING_DIMENSION` | `384` | Model/vector collection dimension |
-| `PDG_EMBEDDING_BATCH_SIZE` | `32` | Chunk embedding batch boyutu |
-| `PDG_MAX_CONCURRENT_EMBEDDINGS` | `1` | Aynı anda CPU-ağır embedding işi |
-| `PDG_VECTOR_STORE_URL` | `http://qdrant:6333` | Yalnız internal Qdrant URL'si |
-| `PDG_VECTOR_COLLECTION` | `pdg_chunks_v1` | Koleksiyon adı |
-| `PDG_HYBRID_RRF_K` | `60` | RRF dengeleme sabiti |
-| `PDG_MAX_RESULTS_PER_DOCUMENT` | `3` | Sonuç çeşitliliği; `0` limitsiz |
+| `CORPUSGATE_SEMANTIC_ENABLED` | `false` | Semantic runtime'ı açar |
+| `CORPUSGATE_DEFAULT_RETRIEVAL_MODE` | `lexical` | Parametresiz arama modu |
+| `CORPUSGATE_SEMANTIC_FALLBACK_ENABLED` | `true` | Semantic hata durumunda lexical devam |
+| `CORPUSGATE_EMBEDDING_MODEL` | multilingual MiniLM | FastEmbed model adı |
+| `CORPUSGATE_EMBEDDING_MODEL_VERSION` | `fastembed-0.8.0-onnx-q` | Index uyumluluk etiketi |
+| `CORPUSGATE_EMBEDDING_DIMENSION` | `384` | Model/vector collection dimension |
+| `CORPUSGATE_EMBEDDING_BATCH_SIZE` | `32` | Chunk embedding batch boyutu |
+| `CORPUSGATE_MAX_CONCURRENT_EMBEDDINGS` | `1` | Aynı anda CPU-ağır embedding işi |
+| `CORPUSGATE_VECTOR_STORE_URL` | `http://qdrant:6333` | Yalnız internal Qdrant URL'si |
+| `CORPUSGATE_VECTOR_COLLECTION` | `corpusgate_chunks_v1` | Koleksiyon adı |
+| `CORPUSGATE_HYBRID_RRF_K` | `60` | RRF dengeleme sabiti |
+| `CORPUSGATE_MAX_RESULTS_PER_DOCUMENT` | `3` | Sonuç çeşitliliği; `0` limitsiz |
 
 Model değiştirirken model adı, version etiketi ve dimension'ı birlikte güncelleyin. Collection
-dimension değişiyorsa yeni bir `PDG_VECTOR_COLLECTION` adı kullanın; mevcut dimension ile
+dimension değişiyorsa yeni bir `CORPUSGATE_VECTOR_COLLECTION` adı kullanın; mevcut dimension ile
 uyumsuz collection kontrollü fallback üretir. Ardından:
 
 ```bash
 docker compose -f compose.prod.yaml -f compose.semantic.yaml run --rm gateway \
-  private-document-gateway-semantic reindex --force
+  corpusgate-semantic reindex --force
 ```
 
 Normal upload/reindex yalnızca content hash'i yeni olan chunk'ları embed eder. Aynı içerik yeni
@@ -102,7 +102,7 @@ içerir. Gerçek local model ve Qdrant ile rapor üretin:
 ```bash
 docker compose -f compose.prod.yaml -f compose.semantic.yaml run --rm \
   -v "$PWD/evaluation:/evaluation:ro" gateway \
-  private-document-gateway-evaluate /evaluation/dataset.json
+  corpusgate-evaluate /evaluation/dataset.json
 ```
 
 Production image evaluation klasörünü kopyalamaz; yukarıdaki komut dataset'i bakım container'ına
@@ -113,7 +113,7 @@ vermediği için vector volume boyutunu ayrıca ölçün:
 
 ```bash
 docker system df -v
-sudo du -sh /var/lib/docker/volumes/private-document-gateway_vector_data/_data
+sudo du -sh /var/lib/docker/volumes/corpusgate_vector_data/_data
 ```
 
 Rapor üretilmeden bu doküman tasarruf, latency veya kalite yüzdesi iddia etmez.

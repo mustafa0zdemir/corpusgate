@@ -7,7 +7,7 @@ from tempfile import TemporaryDirectory
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
-os.environ.setdefault("PDG_API_KEY", "measurement-api-key-0123456789")
+os.environ.setdefault("CORPUSGATE_API_KEY", "measurement-api-key-0123456789")
 
 from app.core.config import Settings  # noqa: E402
 from app.main import create_app  # noqa: E402
@@ -40,7 +40,7 @@ def sample_document() -> bytes:
 
 
 def main() -> None:
-    with TemporaryDirectory(prefix="pdg-measurement-") as temporary:
+    with TemporaryDirectory(prefix="corpusgate-measurement-") as temporary:
         settings = Settings(
             api_key=SecretStr(API_KEY),
             environment="measurement",

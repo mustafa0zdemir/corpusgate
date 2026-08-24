@@ -13,9 +13,9 @@
 	}
 }
 
-{$PDG_PUBLIC_DOMAIN} {
+{$CORPUSGATE_PUBLIC_DOMAIN} {
 	request_body {
-		max_size {$PDG_PROXY_MAX_BODY_SIZE}
+		max_size {$CORPUSGATE_PROXY_MAX_BODY_SIZE}
 	}
 
 	header {

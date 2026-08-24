@@ -57,7 +57,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            PDG_VERSION=${{ steps.meta.outputs.version }}
-            PDG_REVISION=${{ github.sha }}
+            CORPUSGATE_VERSION=${{ steps.meta.outputs.version }}
+            CORPUSGATE_REVISION=${{ github.sha }}
           provenance: mode=max
           sbom: true

@@ -12,7 +12,7 @@ from app.repositories.base import DocumentRepository
 from app.semantic.runtime import SemanticRuntime
 from app.vectorstores.base import VectorRecord
 
-logger = logging.getLogger("private_document_gateway.semantic_index")
+logger = logging.getLogger("corpusgate.semantic_index")
 
 
 @dataclass(frozen=True, slots=True)

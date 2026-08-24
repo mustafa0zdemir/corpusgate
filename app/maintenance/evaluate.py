@@ -37,7 +37,7 @@ def main() -> None:
 
 def evaluate(dataset: dict) -> dict:
     base_settings = get_settings()
-    with tempfile.TemporaryDirectory(prefix="pdg-evaluation-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="corpusgate-evaluation-") as temporary:
         root = Path(temporary)
         settings = base_settings.model_copy(
             update={
@@ -109,7 +109,7 @@ def _add_document(repository: SQLiteDocumentRepository, source: dict) -> Documen
         f"# {chunk['heading']}\n\n{chunk['content']}" for chunk in source["chunks"]
     )
     document = Document(
-        id=str(uuid5(NAMESPACE_URL, f"pdg-evaluation:{source['name']}")),
+        id=str(uuid5(NAMESPACE_URL, f"corpusgate-evaluation:{source['name']}")),
         original_filename=source["name"],
         content_type="text/markdown",
         extension="md",

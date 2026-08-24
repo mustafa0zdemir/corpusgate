@@ -1,20 +1,20 @@
-name: private-document-gateway
+name: corpusgate
 
 services:
   gateway:
     build:
       target: semantic-runtime
     environment:
-      PDG_SEMANTIC_ENABLED: "true"
-      PDG_EMBEDDING_OFFLINE: "true"
-      PDG_EMBEDDING_CACHE_DIR: /models
-      PDG_VECTOR_STORE_URL: http://qdrant:6333
+      CORPUSGATE_SEMANTIC_ENABLED: "true"
+      CORPUSGATE_EMBEDDING_OFFLINE: "true"
+      CORPUSGATE_EMBEDDING_CACHE_DIR: /models
+      CORPUSGATE_VECTOR_STORE_URL: http://qdrant:6333
     volumes:
       - model_cache:/models
     depends_on:
       qdrant:
         condition: service_healthy
-    mem_limit: ${PDG_SEMANTIC_MEMORY_LIMIT:-3g}
+    mem_limit: ${CORPUSGATE_SEMANTIC_MEMORY_LIMIT:-3g}
 
   qdrant:
     image: qdrant/qdrant:v1.19.0-unprivileged
@@ -31,8 +31,8 @@ services:
     cap_drop:
       - ALL
     pids_limit: 256
-    cpus: ${PDG_VECTOR_CPU_LIMIT:-1.0}
-    mem_limit: ${PDG_VECTOR_MEMORY_LIMIT:-1g}
+    cpus: ${CORPUSGATE_VECTOR_CPU_LIMIT:-1.0}
+    mem_limit: ${CORPUSGATE_VECTOR_MEMORY_LIMIT:-1g}
     healthcheck:
       test:
         - CMD
@@ -53,11 +53,11 @@ services:
     profiles:
       - semantic-setup
     environment:
-      PDG_API_KEY: setup-only-not-used-0123456789
-      PDG_SEMANTIC_ENABLED: "true"
-      PDG_EMBEDDING_OFFLINE: "false"
-      PDG_EMBEDDING_CACHE_DIR: /models
-    command: ["private-document-gateway-semantic", "download-model"]
+      CORPUSGATE_API_KEY: setup-only-not-used-0123456789
+      CORPUSGATE_SEMANTIC_ENABLED: "true"
+      CORPUSGATE_EMBEDDING_OFFLINE: "false"
+      CORPUSGATE_EMBEDDING_CACHE_DIR: /models
+    command: ["corpusgate-semantic", "download-model"]
     volumes:
       - model_cache:/models
     read_only: true

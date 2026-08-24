@@ -1,6 +1,6 @@
 # Private Network Guide
 
-This is synthetic, non-sensitive demonstration content for Private Document Gateway.
+This is synthetic, non-sensitive demonstration content for CorpusGate.
 
 ## Access policy
 

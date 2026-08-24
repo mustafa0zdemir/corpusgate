@@ -28,7 +28,7 @@ from app.retrieval.types import RankedCandidate, RetrievalFilters, RetrievalMode
 from app.semantic.runtime import SemanticRuntime
 
 WORD_RE = re.compile(r"\w+", re.UNICODE)
-logger = logging.getLogger("private_document_gateway.search")
+logger = logging.getLogger("corpusgate.search")
 
 
 @dataclass(frozen=True, slots=True)
