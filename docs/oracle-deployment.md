@@ -1,6 +1,6 @@
 # Oracle Cloud Ubuntu production deployment
 
-Bu rehber Private Document Gateway `0.3.x` sürümünü tek Oracle Cloud Ubuntu VM üzerinde kalıcı
+Bu rehber Private Document Gateway `0.4.x` sürümünü tek Oracle Cloud Ubuntu VM üzerinde kalıcı
 ve güvenli çalıştırır. Önerilen erişim Tailscale'dir. Public domain yalnızca gerçekten gerekliyse
 Caddy profiliyle açılmalıdır.
 
@@ -231,7 +231,25 @@ docker compose -f compose.prod.yaml start gateway
 
 Tek bozuk belge `failed` sayılır; diğer belgelerin rebuild işlemi devam eder.
 
-## 10. Sorun giderme
+## 10. Semantic profil
+
+Semantic/hybrid özellik isteğe bağlıdır. Oracle Ampere A1 için önce en az 6 GB RAM ayırın; model
+ve kendi corpus ölçümlerinize göre limitleri ayarlayın. Modeli bir kez indirip gateway'i offline
+başlatın:
+
+```bash
+docker compose -f compose.prod.yaml -f compose.semantic.yaml \
+  --profile semantic-setup run --rm model-downloader
+docker compose -f compose.prod.yaml -f compose.semantic.yaml up -d --build gateway qdrant
+docker compose -f compose.prod.yaml -f compose.semantic.yaml ps
+```
+
+OCI firewall'da Qdrant `6333` için ingress açmayın; port yalnız internal Docker network'tedir.
+`model_cache` ve `vector_data` volume'larını güncellemede silmeyin. Semantic özelliği kapatmak için
+normal `docker compose -f compose.prod.yaml up -d gateway` komutuna dönün. Ayrıntılar ve offline
+model taşıma adımları [semantic search rehberindedir](semantic-search.md).
+
+## 11. Sorun giderme
 
 - `invalid owner` / `not writable`: `/srv/private-document-gateway` alt klasörlerini
   `10001:10001`, `0700` yapın.

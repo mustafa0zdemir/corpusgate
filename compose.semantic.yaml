@@ -1,0 +1,78 @@
+name: private-document-gateway
+
+services:
+  gateway:
+    build:
+      target: semantic-runtime
+    environment:
+      PDG_SEMANTIC_ENABLED: "true"
+      PDG_EMBEDDING_OFFLINE: "true"
+      PDG_EMBEDDING_CACHE_DIR: /models
+      PDG_VECTOR_STORE_URL: http://qdrant:6333
+    volumes:
+      - model_cache:/models
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    mem_limit: ${PDG_SEMANTIC_MEMORY_LIMIT:-3g}
+
+  qdrant:
+    image: qdrant/qdrant:v1.19.0-unprivileged
+    restart: unless-stopped
+    expose:
+      - "6333"
+    volumes:
+      - vector_data:/qdrant/storage
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 256
+    cpus: ${PDG_VECTOR_CPU_LIMIT:-1.0}
+    mem_limit: ${PDG_VECTOR_MEMORY_LIMIT:-1g}
+    healthcheck:
+      test:
+        - CMD
+        - bash
+        - -c
+        - ': >/dev/tcp/127.0.0.1/6333'
+      interval: 15s
+      timeout: 5s
+      start_period: 20s
+      retries: 5
+    networks:
+      - backend
+
+  model-downloader:
+    build:
+      context: .
+      target: semantic-runtime
+    profiles:
+      - semantic-setup
+    environment:
+      PDG_API_KEY: setup-only-not-used-0123456789
+      PDG_SEMANTIC_ENABLED: "true"
+      PDG_EMBEDDING_OFFLINE: "false"
+      PDG_EMBEDDING_CACHE_DIR: /models
+    command: ["private-document-gateway-semantic", "download-model"]
+    volumes:
+      - model_cache:/models
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777,uid=10001,gid=10001
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - model_download
+
+networks:
+  model_download:
+
+volumes:
+  model_cache:
+  vector_data:

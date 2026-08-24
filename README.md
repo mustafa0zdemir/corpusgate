@@ -12,8 +12,8 @@ sağlayıcısını zorunlu kılmaz.
 
 - PDF, Office ve metin belgeleri için tek, kontrollü bir erişim yüzeyi sağlar.
 - MarkItDown çıktısını bir kez üretip diskte önbelleğe alır.
-- FTS5/BM25 ile relevance sıralı arama yapar; sonuçları `top_k`, `max_chars` ve
-  `max_tokens` bütçeleriyle sınırlar.
+- FTS5/BM25 ile relevance sıralı lexical arama yapar; isteğe bağlı yerel embedding + Qdrant
+  profiliyle semantic ve RRF tabanlı hybrid retrieval sunar.
 - Ham dosyaları dosya adıyla değil UUID ile saklar.
 - Düşük kaynaklı tek sunucuda SQLite ve yerel volume'larla çalışır.
 - Arama, parser, storage ve repository sınırları ileride pgvector/Qdrant/S3/PostgreSQL
@@ -29,7 +29,8 @@ REST upload
     │
     └─ MarkItDown ──> cached Markdown ──> token-aware, metadata-carrying chunks
                                             │
-                                            └─> SQLite metadata + FTS5/BM25 index
+                                            ├─> SQLite metadata + FTS5/BM25 index
+                                            └─> optional local embedding + Qdrant
                                                         │
                               budget + dedup + cursor / read-only MCP tools
 ```
@@ -41,6 +42,10 @@ SHA-256 aynıysa cache kaydı doğrudan kullanılır. Aynı dosya adı farklı i
 yüklendiğinde mevcut `document_id` korunur; yeni dönüşüm başarılı olduktan sonra eski Markdown,
 chunk ve FTS kayıtları tek transaction ile değiştirilir. Başarısız yenileme hazır eski sürümü
 bozmaz.
+
+Lexical arama her image'da bulunur ve production varsayılanıdır. Semantic bağımlılıklar yalnızca
+`semantic-runtime` target'ında bulunur. `EmbeddingProvider`, `VectorStore` ve
+`RetrievalStrategy` sınırları iş kurallarını FastEmbed, Qdrant veya tek bir modele bağlamaz.
 
 ## Desteklenen formatlar
 
@@ -104,6 +109,8 @@ cp .env.example .env
 uvicorn app.main:app --reload
 ```
 
+Semantic geliştirme için `pip install -e '.[semantic,dev]'` kullanın.
+
 Test ve kalite kontrolleri:
 
 ```bash
@@ -123,6 +130,8 @@ ruff format --check .
 | `PDG_MAX_RESPONSE_TOKENS` | `6000` | İstemcinin aşamayacağı kesin token üst sınırı |
 | `PDG_MAX_RESPONSE_CHARS` | `24000` | İstemcinin aşamayacağı kesin karakter üst sınırı |
 | `PDG_MAX_NEIGHBOR_WINDOW` | `1` | Bir eşleşmenin iki yönündeki azami komşu sayısı |
+| `PDG_DEFAULT_RETRIEVAL_MODE` | `lexical` | Parametre verilmediğinde güvenli production modu |
+| `PDG_SEMANTIC_ENABLED` | `false` | Yerel embedding/vector özelliğini açar |
 
 Token sayıları sağlayıcıya özgü tokenizer değil, yerel ve deterministik bir tahmindir. Böylece
 ürün bir LLM'e bağlanmadan bütçe uygulayabilir; gerçek model faturalama token'ı farklı olabilir.
@@ -243,7 +252,8 @@ AI aracı
   "top_k": 3,
   "max_chars": 4000,
   "max_tokens": 600,
-  "neighbor_window": 0
+  "neighbor_window": 0,
+  "retrieval_mode": "hybrid"
 }
 ```
 
@@ -275,6 +285,47 @@ Her retrieval item'ı aynı kaynak sözleşmesini kullanır:
 `top_k`, `max_chars` ve `max_tokens` bütçesinden harcar. `next_cursor`, aynı araç ve sorguyla
 sonraki relevance sayfasını almak içindir. `get_document_section` da cursor destekler ve tam
 belge endpoint'i gibi davranmaz.
+
+`retrieval_mode`, `lexical`, `semantic` veya `hybrid` olabilir. Cevaptaki
+`requested_retrieval_mode` istenen modu, `retrieval_mode` ise gerçekten kullanılan modu gösterir.
+Yerel model ya da vector store hazır değilse ve fallback açıksa gerçek mod
+`lexical_fallback` olur. Hybrid item'ları `lexical_rank`, `semantic_rank`, `combined_rank`,
+`semantic_score` ve `matched_retrieval_modes` alanlarıyla sıralamanın kaynağını açıklar.
+
+## İsteğe bağlı private semantic search
+
+Varsayılan model `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`'dir: Türkçe ve
+İngilizcenin de bulunduğu 50 dil için eğitilmiş, 384 boyutlu ve Apache-2.0 lisanslı bir sentence
+embedding modelidir. FastEmbed CPU/ONNX adaptörü modeli process başına bir kez yükler; query ve
+passage prefix'leri provider içinde yapılandırılabilir. Belge veya sorgu bir cloud embedding
+API'sine gönderilmez. Model kartı ve lisans:
+[Hugging Face model card](https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2).
+
+İlk kurulumda model cache'ini, belge volume'larına erişmeyen tek seferlik container ile doldurun:
+
+```bash
+docker compose -f compose.prod.yaml -f compose.semantic.yaml \
+  --profile semantic-setup run --rm model-downloader
+docker compose -f compose.prod.yaml -f compose.semantic.yaml up -d --build gateway qdrant
+```
+
+Gateway `PDG_EMBEDDING_OFFLINE=true` ile başlar; bu nedenle ilk indirmeden sonra production
+çalışması dış ağa ihtiyaç duymaz. `model_cache` ve `vector_data` volume'larını silmeyin. Semantic
+özelliği kapatmak için semantic override olmadan normal Compose komutunu kullanın. Model adı,
+version veya dimension değiştirildiğinde yeni metadata ile uyumlu vektörler üretilir; kontrollü
+tam yenileme için:
+
+```bash
+docker compose -f compose.prod.yaml -f compose.semantic.yaml run --rm gateway \
+  private-document-gateway-semantic reindex --force
+```
+
+Qdrant yalnızca internal Docker network'te expose edilir; host portu yayınlanmaz. Qdrant'ın
+multi-platform image'ı AMD64 ve ARM64 sağlar. Ayrıntılı ayarlar, offline aktarım ve arıza davranışı
+için [semantic search rehberine](docs/semantic-search.md) bakın.
+
+Repodaki gerçek ARM64 çalışma ölçümü ve lexical/semantic/hybrid kalite karşılaştırması:
+[24 Ağustos 2026 retrieval evaluation](docs/retrieval-evaluation-2026-08-24.md).
 
 ## Oracle Cloud production kurulumu
 
@@ -378,10 +429,18 @@ image'ı ayrı profile ile 80/443'ü açar; gateway yalnızca internal Docker ne
 edilir. Rate limit uygulamada token/istemci bazlıdır ve Caddy request-size/timeout katmanıyla
 birlikte çalışır.
 
+### ADR-006 — Opsiyonel FastEmbed + Qdrant ve RRF
+
+Temel image küçük ve lexical-only kalır. Semantic profile CPU üzerinde çalışan multilingual
+FastEmbed provider'ını ve ayrı, kalıcı Qdrant servisini ekler. Qdrant adapter arkasındadır ve host
+portu yoktur. Hybrid sıralama farklı BM25/cosine ölçeklerini doğrudan toplamak yerine Reciprocal
+Rank Fusion kullanır; exact lexical eşleşmeler korunur. Semantic hata temel servisi kapatmaz ve
+cevap gerçek `lexical_fallback` modunu bildirir.
+
 ## Yol haritası
 
 - Background job/worker ve işlem progress'i
-- Opsiyonel hybrid/semantic search ve pgvector/Qdrant adaptörleri
+- Semantic index bakım görünürlüğü ve isteğe bağlı arka plan indeks worker'ı
 - PostgreSQL repository ve çoklu instance profili
 - S3/MinIO uyumlu opsiyonel storage adaptörü
 - OCR için tamamen yerel, opsiyonel adapter
