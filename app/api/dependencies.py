@@ -11,8 +11,9 @@ from app.core.config import Settings
 from app.parsers.base import DocumentParser
 from app.repositories.base import DocumentRepository
 from app.repositories.sqlite import SQLiteDocumentRepository
+from app.repositories.sqlite_fts import SQLiteFtsSearchIndex
 from app.services.documents import DocumentService
-from app.services.search import KeywordSearchService
+from app.services.search import FullTextSearchService
 from app.storage.base import FileStorage
 
 
@@ -48,8 +49,10 @@ def get_document_service(request: Request, repository: RepositoryDependency) -> 
 DocumentServiceDependency = Annotated[DocumentService, Depends(get_document_service)]
 
 
-def get_search_service(repository: RepositoryDependency) -> KeywordSearchService:
-    return KeywordSearchService(repository)
+def get_search_service(
+    session: SessionDependency, repository: RepositoryDependency
+) -> FullTextSearchService:
+    return FullTextSearchService(repository, SQLiteFtsSearchIndex(session))
 
 
-SearchServiceDependency = Annotated[KeywordSearchService, Depends(get_search_service)]
+SearchServiceDependency = Annotated[FullTextSearchService, Depends(get_search_service)]

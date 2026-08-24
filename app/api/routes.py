@@ -40,6 +40,7 @@ def upload_document(
         status=document.status,
         created_at=document.created_at,
         deduplicated=result.deduplicated,
+        reindexed=result.reindexed,
     )
 
 

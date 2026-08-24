@@ -28,7 +28,7 @@ class FileStorage(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def save_markdown(self, document_id: str, content: str) -> str:
+    def save_markdown(self, document_id: str, content: str, *, cache_key: str | None = None) -> str:
         raise NotImplementedError
 
     @abstractmethod

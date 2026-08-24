@@ -6,7 +6,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
 from app.core.errors import AppError, DocumentNotFoundError
-from app.repositories.base import DocumentRepository, SearchCandidate
+from app.repositories.base import DocumentRepository
+from app.repositories.search import SearchIndex
 
 WORD_RE = re.compile(r"\w+", re.UNICODE)
 
@@ -35,9 +36,10 @@ class SearchService(ABC):
         raise NotImplementedError
 
 
-class KeywordSearchService(SearchService):
-    def __init__(self, repository: DocumentRepository):
+class FullTextSearchService(SearchService):
+    def __init__(self, repository: DocumentRepository, index: SearchIndex):
         self.repository = repository
+        self.index = index
 
     def search(
         self,
@@ -50,27 +52,19 @@ class KeywordSearchService(SearchService):
         if document_id is not None and self.repository.get(document_id) is None:
             raise DocumentNotFoundError
 
-        normalized_query = _normalize(query)
-        terms = list(dict.fromkeys(WORD_RE.findall(normalized_query)))
+        terms = list(dict.fromkeys(WORD_RE.findall(_normalize(query))))
         if not terms:
             raise AppError("Search query must contain text.", status_code=422, code="invalid_query")
 
-        candidates = self.repository.search_candidates(
+        candidates = self.index.search(
             terms,
-            document_id=document_id,
+            document_ids=[document_id] if document_id else None,
             limit=max(top_k * 20, 50),
-        )
-        ranked = sorted(
-            (
-                (self._score(candidate, normalized_query, terms), candidate)
-                for candidate in candidates
-            ),
-            key=lambda item: (-item[0], item[1].chunk.chunk_index),
         )
 
         hits: list[SearchHit] = []
         remaining = max_chars
-        for score, candidate in ranked:
+        for candidate in candidates:
             if len(hits) >= top_k or remaining <= 0:
                 break
             per_hit_limit = min(2_500, remaining)
@@ -85,21 +79,11 @@ class KeywordSearchService(SearchService):
                     chunk_index=candidate.chunk.chunk_index,
                     heading=candidate.chunk.heading,
                     content=content,
-                    score=round(score, 3),
+                    score=candidate.score,
                 )
             )
             remaining -= len(content)
         return hits
-
-    @staticmethod
-    def _score(candidate: SearchCandidate, query: str, terms: list[str]) -> float:
-        content = _normalize(candidate.chunk.content)
-        heading = _normalize(candidate.chunk.heading or "")
-        score = sum(content.count(term) for term in terms)
-        score += 2.5 * sum(heading.count(term) for term in terms)
-        if query in content:
-            score += 5
-        return float(score)
 
 
 def _normalize(value: str) -> str:

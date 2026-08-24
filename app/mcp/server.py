@@ -11,7 +11,8 @@ from app.core.config import Settings, get_settings
 from app.core.database import Database
 from app.core.errors import AppError
 from app.repositories.sqlite import SQLiteDocumentRepository
-from app.services.search import KeywordSearchService, SearchHit
+from app.repositories.sqlite_fts import SQLiteFtsSearchIndex
+from app.services.search import FullTextSearchService, SearchHit
 
 READ_ONLY = ToolAnnotations(
     readOnlyHint=True,
@@ -100,7 +101,8 @@ def create_mcp_server(settings: Settings, sessions: sessionmaker) -> MCPServer:
         actual_max_chars = min(max_chars, settings.max_response_chars)
         combined: list[SearchHit] = []
         with sessions() as session:
-            search = KeywordSearchService(SQLiteDocumentRepository(session))
+            repository = SQLiteDocumentRepository(session)
+            search = FullTextSearchService(repository, SQLiteFtsSearchIndex(session))
             for document_id in dict.fromkeys(document_ids):
                 combined.extend(
                     search.search(
@@ -170,7 +172,8 @@ def _search(
     actual_max_chars = min(max_chars, settings.max_response_chars)
     try:
         with sessions() as session:
-            hits = KeywordSearchService(SQLiteDocumentRepository(session)).search(
+            repository = SQLiteDocumentRepository(session)
+            hits = FullTextSearchService(repository, SQLiteFtsSearchIndex(session)).search(
                 query,
                 document_id=document_id,
                 top_k=actual_top_k,

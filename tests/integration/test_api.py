@@ -37,7 +37,10 @@ def test_upload_convert_cache_chunk_search_and_delete(
     stored_files = list((settings.data_dir / "uploads").iterdir())
     assert len(stored_files) == 1
     assert stored_files[0].name == f"{document_id}.md"
-    markdown_file = settings.data_dir / "markdown" / f"{document_id}.md"
+    markdown_files = list((settings.data_dir / "markdown").iterdir())
+    assert len(markdown_files) == 1
+    markdown_file = markdown_files[0]
+    assert markdown_file.name.startswith(f"{document_id}-")
     assert markdown_file.exists()
 
     metadata = client.get(f"/api/v1/documents/{document_id}", headers=auth_headers)

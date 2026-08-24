@@ -30,6 +30,7 @@ class DocumentUploadResponse(BaseModel):
     status: DocumentStatus
     created_at: datetime
     deduplicated: bool = False
+    reindexed: bool = False
 
 
 class DocumentMetadata(DocumentSummary):

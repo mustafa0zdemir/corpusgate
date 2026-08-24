@@ -1,9 +1,9 @@
 from app.services.documents import DocumentService, UploadResult
-from app.services.search import KeywordSearchService, SearchHit, SearchService
+from app.services.search import FullTextSearchService, SearchHit, SearchService
 
 __all__ = [
     "DocumentService",
-    "KeywordSearchService",
+    "FullTextSearchService",
     "SearchHit",
     "SearchService",
     "UploadResult",

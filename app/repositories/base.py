@@ -1,16 +1,9 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
 
 from app.chunking.base import ChunkDraft
 from app.models.document import Chunk, Document
-
-
-@dataclass(frozen=True, slots=True)
-class SearchCandidate:
-    document: Document
-    chunk: Chunk
 
 
 class DocumentRepository(ABC):
@@ -24,6 +17,10 @@ class DocumentRepository(ABC):
 
     @abstractmethod
     def get_by_hash(self, sha256: str) -> Document | None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_latest_by_filename(self, filename: str) -> Document | None:
         raise NotImplementedError
 
     @abstractmethod
@@ -53,13 +50,30 @@ class DocumentRepository(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def search_candidates(
+    def get_neighbor_chunks(
         self,
-        terms: list[str],
+        document_id: str,
+        chunk_index: int,
+        window: int,
+    ) -> list[Chunk]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def replace_content(
+        self,
+        document: Document,
         *,
-        document_id: str | None,
-        limit: int,
-    ) -> list[SearchCandidate]:
+        original_filename: str,
+        content_type: str,
+        extension: str,
+        file_size: int,
+        sha256: str,
+        storage_path: str,
+        markdown_path: str,
+        markdown_chars: int,
+        markdown_tokens: int,
+        chunks: list[ChunkDraft],
+    ) -> None:
         raise NotImplementedError
 
     @abstractmethod

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 from pathlib import Path
 from typing import BinaryIO
 
@@ -52,8 +53,11 @@ class LocalFileStorage(FileStorage):
 
         return StoredFile(relative_path, destination, total, digest.hexdigest())
 
-    def save_markdown(self, document_id: str, content: str) -> str:
-        relative_path = f"markdown/{document_id}.md"
+    def save_markdown(self, document_id: str, content: str, *, cache_key: str | None = None) -> str:
+        if cache_key is not None and not re.fullmatch(r"[a-f0-9]{12}", cache_key):
+            raise InvalidFileError("Invalid Markdown cache key.")
+        suffix = f"-{cache_key}" if cache_key else ""
+        relative_path = f"markdown/{document_id}{suffix}.md"
         destination = self.resolve(relative_path)
         temporary = destination.with_suffix(".md.part")
         temporary.write_text(content, encoding="utf-8")

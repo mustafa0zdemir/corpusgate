@@ -37,6 +37,7 @@ class Database:
         Base.metadata.create_all(self.engine)
         if self.engine.url.get_backend_name() == "sqlite":
             self._migrate_sqlite_schema()
+            self._create_fts_index()
 
     def _migrate_sqlite_schema(self) -> None:
         additions = {
@@ -61,6 +62,23 @@ class Database:
                         connection.exec_driver_sql(
                             f"ALTER TABLE {table} ADD COLUMN {column} {definition}"
                         )
+
+    def _create_fts_index(self) -> None:
+        with self.engine.begin() as connection:
+            connection.exec_driver_sql(
+                "CREATE VIRTUAL TABLE IF NOT EXISTS chunk_fts USING fts5("
+                "chunk_id UNINDEXED, document_id UNINDEXED, heading, content, "
+                "tokenize='unicode61 remove_diacritics 2')"
+            )
+            connection.exec_driver_sql(
+                "DELETE FROM chunk_fts WHERE chunk_id NOT IN (SELECT id FROM chunks)"
+            )
+            connection.exec_driver_sql(
+                "INSERT INTO chunk_fts(chunk_id, document_id, heading, content) "
+                "SELECT c.id, c.document_id, COALESCE(c.heading, ''), c.content "
+                "FROM chunks c WHERE NOT EXISTS ("
+                "SELECT 1 FROM chunk_fts f WHERE f.chunk_id = c.id)"
+            )
 
     def session(self) -> Iterator[Session]:
         with self.session_factory() as session:
