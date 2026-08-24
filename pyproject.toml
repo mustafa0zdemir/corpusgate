@@ -31,6 +31,8 @@ dev = [
 [project.scripts]
 private-document-gateway = "app.main:run"
 private-document-gateway-mcp = "app.mcp.server:run_stdio"
+private-document-gateway-backup = "app.maintenance.backup:main"
+private-document-gateway-reindex-cache = "app.maintenance.reindex:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]

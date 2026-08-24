@@ -3,16 +3,22 @@ FROM python:3.12-slim-bookworm AS base
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    DO_NOT_TRACK=1 \
+    HF_HUB_DISABLE_TELEMETRY=1 \
+    SCARF_NO_ANALYTICS=true \
+    HOME=/tmp
 
 WORKDIR /app
 
 RUN groupadd --gid 10001 appuser \
     && useradd --uid 10001 --gid 10001 --create-home --shell /usr/sbin/nologin appuser \
-    && mkdir -p /data/uploads /data/markdown /data/database \
-    && chown -R appuser:appuser /data
+    && mkdir -p /data/documents /data/cache /data/database /backups \
+    && chown -R appuser:appuser /data /backups \
+    && chmod 0755 /data /backups \
+    && chmod 0700 /data/documents /data/cache /data/database
 
-COPY pyproject.toml README.md LICENSE ./
+COPY pyproject.toml README.md LICENSE .env.example ./
 COPY app ./app
 
 RUN pip install --no-cache-dir .
@@ -30,7 +36,9 @@ USER 10001:10001
 
 EXPOSE 8000
 
+STOPSIGNAL SIGTERM
+
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+  CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=3)"]
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]

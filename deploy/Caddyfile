@@ -1,0 +1,39 @@
+{
+	admin off
+	servers {
+		timeouts {
+			read_body 2m
+			read_header 10s
+			write 10m
+			idle 5m
+		}
+		max_header_size 32KB
+		enable_full_duplex
+	}
+}
+
+{$PDG_PUBLIC_DOMAIN} {
+	request_body {
+		max_size {$PDG_PROXY_MAX_BODY_SIZE}
+	}
+
+	header {
+		-Server
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+	}
+
+	reverse_proxy gateway:8000 {
+		flush_interval -1
+		health_uri /ready
+		health_interval 30s
+		health_timeout 5s
+		transport http {
+			dial_timeout 5s
+			response_header_timeout 130s
+			keepalive 30s
+		}
+	}
+}

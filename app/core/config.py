@@ -5,6 +5,7 @@ from pathlib import Path
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import make_url
 
 
 class Settings(BaseSettings):
@@ -27,6 +28,7 @@ class Settings(BaseSettings):
     data_dir: Path = Path("data")
     documents_dir: Path | None = None
     cache_dir: Path | None = None
+    backup_dir: Path | None = None
     database_url: str | None = None
     max_file_size_mb: int = Field(default=25, ge=1, le=1024)
     max_archive_uncompressed_mb: int = Field(default=250, ge=1, le=4096)
@@ -90,6 +92,17 @@ class Settings(BaseSettings):
     @property
     def cache_root(self) -> Path:
         return self.cache_dir or self.data_dir / "markdown"
+
+    @property
+    def backup_root(self) -> Path:
+        return self.backup_dir or self.data_dir / "backups"
+
+    @property
+    def sqlite_database_path(self) -> Path:
+        url = make_url(self.resolved_database_url)
+        if url.get_backend_name() != "sqlite" or not url.database or url.database == ":memory:":
+            raise ValueError("Maintenance commands require a file-backed SQLite database.")
+        return Path(url.database).resolve()
 
     @property
     def resolved_database_url(self) -> str:

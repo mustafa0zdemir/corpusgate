@@ -71,13 +71,13 @@ git clone https://github.com/mustafa0zdemir/private-document-gateway.git
 cd private-document-gateway
 cp .env.example .env
 openssl rand -hex 32
-# Üretilen değeri .env içindeki PDG_API_KEY alanına yazın.
+# REST için PDG_API_KEY, MCP için farklı bir PDG_MCP_AUTH_TOKENS değeri üretin.
 docker compose up -d --build
 docker compose ps
 curl http://127.0.0.1:8000/health
 ```
 
-Uploads, Markdown cache ve SQLite veritabanı üç ayrı named volume'da kalıcıdır. Container
+Documents, Markdown cache, SQLite veritabanı ve backup çıktıları ayrı volume'larda kalıcıdır. Container
 UID `10001` ile, capability olmadan, read-only root filesystem ve yazılabilir geçici `/tmp`
 ile çalışır. Kullanılan Python slim tabanı ve bağımlılıklar AMD64/ARM64 için uygundur.
 
@@ -129,7 +129,8 @@ Token sayıları sağlayıcıya özgü tokenizer değil, yerel ve deterministik 
 
 ## REST API
 
-`GET /health` dışındaki REST ve MCP istekleri `X-API-Key` ister. Örneklerde:
+REST endpoint'leri `X-API-Key` ister. `/health` ve `/ready` kimlik doğrulaması olmadan yalnızca
+durum döndürür. Örneklerde:
 
 ```bash
 export PDG_CLIENT_API_KEY='your-.env-value'
@@ -187,7 +188,8 @@ cursor'ı `cursor=...` olarak gönderin. Cursor farklı bir sorguda kullanılır
 ## MCP bağlantısı
 
 Streamable HTTP endpoint'i `http://127.0.0.1:8000/mcp` adresindedir. MCP istemcisinde URL ve
-header tanımlama biçimi istemciye göre değişir; genel yapı şöyledir:
+header tanımlama biçimi istemciye göre değişir. HTTP MCP bağlantılarında `X-API-Key` kabul
+edilmez; Bearer token zorunludur:
 
 ```json
 {
@@ -196,7 +198,7 @@ header tanımlama biçimi istemciye göre değişir; genel yapı şöyledir:
       "type": "streamable-http",
       "url": "http://127.0.0.1:8000/mcp",
       "headers": {
-        "X-API-Key": "your-.env-value"
+        "Authorization": "Bearer your-mcp-token"
       }
     }
   }
@@ -274,31 +276,32 @@ Her retrieval item'ı aynı kaynak sözleşmesini kullanır:
 sonraki relevance sayfasını almak içindir. `get_document_section` da cursor destekler ve tam
 belge endpoint'i gibi davranmaz.
 
-## Oracle Cloud Ubuntu özeti
+## Oracle Cloud production kurulumu
 
-1. Ubuntu ARM64 veya AMD64 instance oluşturun; boot volume için düzenli snapshot planlayın.
-2. Docker Engine ile Compose eklentisini kurun ve repoyu clone edin.
-3. `.env` içinde güçlü `PDG_API_KEY` üretin. MCP için public DNS/Tailscale adresini
-   `PDG_ALLOWED_HOSTS` listesine exact host ve `host:*` biçiminde ekleyin.
-4. Tercihen Tailscale/VPN üzerinden erişin. Public yayın gerekiyorsa yalnızca 80/443 ingress
-   açın, Caddy/Nginx ile TLS sonlandırın ve uygulamanın 8000 portunu internete doğrudan açmayın.
-5. `docker compose up -d --build` çalıştırın; `docker compose ps` ve `/health` ile doğrulayın.
-6. `gateway_uploads`, `gateway_markdown`, `gateway_database` volume'larını birlikte yedekleyin.
+Önerilen yöntem, uygulamayı yalnızca `127.0.0.1` üzerinde yayınlayıp Tailscale Serve ile tailnet
+içine açmaktır. Alternatif public yöntem Caddy otomatik HTTPS profilidir. Her iki yöntemde de
+Bearer token zorunlu kalır ve uygulamanın 8000 portu genel internete açılmaz.
 
-Oracle Security List/NSG ve Ubuntu firewall kuralları birlikte değerlendirilmelidir. Tailscale IP
-ile doğrudan MCP kullanılacaksa bu IP'yi `PDG_ALLOWED_HOSTS` içine ekleyin.
+VM hazırlama, ARM64 notları, Docker kurulumu, OCI NSG/firewall, Tailscale, Caddy, kalıcı klasör
+izinleri, backup/restore, güncelleme ve sorun giderme adımları için
+[Oracle production deployment rehberine](docs/oracle-deployment.md) bakın.
 
 ## Güvenlik notları
 
 - API anahtarı response veya uygulama loguna yazılmaz; `.env` git tarafından dışlanır.
+- HTTP MCP yalnızca Bearer token kabul eder; token listesi environment veya `/run/secrets`
+  dosyasından okunabilir ve rotation için geçici olarak iki token aktif tutulabilir.
 - Dosya adı yalnızca metadata'dır. Disk yolu UUID + doğrulanmış uzantıdan oluşur.
 - Uzantı, MIME ve temel dosya imzası birlikte kontrol edilir. Office archive'larında açılmış
   toplam boyut limiti uygulanır.
 - Maksimum upload boyutu stream sırasında uygulanır; kısmi dosya hata halinde silinir.
+- HTTP request body, rate limit, dönüşüm concurrency/timeout ve FTS search timeout sınırları
+  birbirinden bağımsız uygulanır.
 - MarkItDown yalnızca saklanan yerel UUID yolunda çalışır; MVP URL kabul etmez.
 - CORS varsayılan olarak kapalıdır. Gerekiyorsa kesin origin listesi verin.
 - MCP DNS-rebinding koruması exact Host allowlist ile çalışır.
 - Silme işlemi raw dosyayı, Markdown cache'i, chunk kayıtlarını ve FTS satırlarını siler.
+- JSON loglar query/body/header içermez; yalnızca allowlist işlem metadata'sı taşır.
 - Public kurulumda TLS, firewall/rate limit ve düzenli yedekleme hâlâ operatör sorumluluğudur.
 
 ## Token tasarrufu
@@ -366,6 +369,14 @@ başlık ağırlıklı BM25 skoru üzerine kuruludur. `SearchIndex` sınırı il
 adaptör eklenebilmesi için servis katmanından ayrıdır. Token bütçesi sağlayıcı SDK'sına bağlı
 olmayan deterministik bir tahminle uygulanır; ürünün OpenAI, Claude veya başka bir LLM'e zorunlu
 bağımlılığı yoktur.
+
+### ADR-005 — Private-first production erişimi
+
+Production Compose uygulamayı yalnızca loopback'e bind eder. Önerilen Tailscale Serve kurulumu
+tailnet ACL ve HTTPS termination sağlar. Genel erişim gerektiğinde standart, multi-arch Caddy
+image'ı ayrı profile ile 80/443'ü açar; gateway yalnızca internal Docker network üzerinden proxy
+edilir. Rate limit uygulamada token/istemci bazlıdır ve Caddy request-size/timeout katmanıyla
+birlikte çalışır.
 
 ## Yol haritası
 

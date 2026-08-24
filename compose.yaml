@@ -1,0 +1,66 @@
+name: private-document-gateway
+
+services:
+  gateway:
+    build:
+      context: .
+      target: runtime
+    image: private-document-gateway:local
+    init: true
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PDG_DATA_DIR: /data
+      PDG_DOCUMENTS_DIR: /data/documents
+      PDG_CACHE_DIR: /data/cache
+      PDG_BACKUP_DIR: /backups
+      PDG_DATABASE_URL: sqlite:////data/database/gateway.db
+      PDG_API_KEY: "${PDG_API_KEY:?Set PDG_API_KEY in .env}"
+      PDG_MCP_AUTH_TOKENS: "${PDG_MCP_AUTH_TOKENS:?Set PDG_MCP_AUTH_TOKENS in .env}"
+      PDG_ALLOWED_HOSTS: "${PDG_ALLOWED_HOSTS:-localhost,localhost:*,127.0.0.1,127.0.0.1:*}"
+    ports:
+      - "127.0.0.1:${PDG_PORT:-8000}:8000"
+    volumes:
+      - gateway_documents:/data/documents
+      - gateway_cache:/data/cache
+      - gateway_database:/data/database
+      - gateway_backups:/backups
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777,uid=10001,gid=10001
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 256
+    cpus: "2.0"
+    mem_limit: 2g
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=3)
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    networks:
+      - backend
+
+networks:
+  backend:
+    internal: true
+
+volumes:
+  gateway_documents:
+  gateway_cache:
+  gateway_database:
+  gateway_backups:

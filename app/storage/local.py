@@ -123,6 +123,9 @@ class LocalFileStorage(FileStorage):
             for root in (self.uploads_dir, self.markdown_dir)
         )
 
+    def exists(self, relative_path: str | None) -> bool:
+        return bool(relative_path) and self.resolve(relative_path).is_file()
+
     @staticmethod
     def _prepare_root(root: Path) -> None:
         if root.is_symlink():

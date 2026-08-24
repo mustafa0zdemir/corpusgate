@@ -46,3 +46,7 @@ class FileStorage(ABC):
     @abstractmethod
     def is_ready(self) -> bool:
         raise NotImplementedError
+
+    @abstractmethod
+    def exists(self, relative_path: str | None) -> bool:
+        raise NotImplementedError

@@ -20,3 +20,7 @@ build/
 
 data/*
 !data/.gitkeep
+state/
+backups/
+secrets/
+*.tar.gz

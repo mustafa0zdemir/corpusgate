@@ -266,3 +266,11 @@ class DocumentService:
         self.storage.delete(document.storage_path)
         self.storage.delete(document.markdown_path)
         self.repository.delete(document)
+
+    def rebuild_cache(self, document: Document, *, force: bool = False) -> bool:
+        if not self.storage.exists(document.storage_path):
+            raise DocumentConversionError("The source document is missing.")
+        if not force and self.storage.exists(document.markdown_path):
+            return False
+        self._process(document)
+        return True
