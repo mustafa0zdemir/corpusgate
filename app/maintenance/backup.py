@@ -141,8 +141,13 @@ def _replace_directory(source: Path, destination: Path) -> None:
         raise ValueError("The backup archive is incomplete.")
     if destination.is_symlink():
         raise ValueError("Restore destinations must not be symbolic links.")
-    shutil.rmtree(destination, ignore_errors=True)
-    shutil.copytree(source, destination)
+    destination.mkdir(parents=True, exist_ok=True, mode=0o700)
+    for entry in destination.iterdir():
+        if entry.is_symlink() or entry.is_file():
+            entry.unlink()
+        elif entry.is_dir():
+            shutil.rmtree(entry)
+    shutil.copytree(source, destination, dirs_exist_ok=True)
     for root, directories, files in os.walk(destination):
         os.chmod(root, 0o700)
         for directory in directories:
