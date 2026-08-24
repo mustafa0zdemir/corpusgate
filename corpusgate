@@ -40,6 +40,10 @@ case "$command_name" in
         shift
         exec docker compose exec -T gateway corpusgate-admin "$command_name" "$@"
         ;;
+    upload)
+        shift
+        exec ./scripts/upload.sh "$@"
+        ;;
     restore)
         shift
         if docker compose ps --status running --services | grep -qx gateway; then
@@ -58,6 +62,7 @@ CorpusGate operations
   ./corpusgate status                  Check the running service
   ./corpusgate doctor                  Validate configuration and persistent storage
   ./corpusgate mcp-smoke               Authenticate, list tools, and call list_documents
+  ./corpusgate upload FILE [OPTIONS]   Stream one local file directly to the REST API
   ./corpusgate scan                    Import supported files from ./documents
   ./corpusgate list-documents          List indexed document metadata
   ./corpusgate reindex [--semantic]    Rebuild cache/index data

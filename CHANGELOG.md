@@ -21,6 +21,8 @@ project uses [Semantic Versioning](https://semver.org/).
   content-safe logging, hardened containers, Caddy/Tailscale deployment guidance, and backup.
 - Unified setup/operations helper, startup configuration validation, schema version checks,
   synthetic demo documents, open-source governance files, and release-ready CI workflows.
+- Secure `corpusgate upload` client command for streaming a selected local document directly to the
+  self-hosted REST endpoint without placing file bytes in model or MCP arguments.
 
 ### Security
 

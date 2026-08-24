@@ -45,7 +45,9 @@ def main() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     assert readme.startswith("# CorpusGate\n")
     assert "./corpusgate init" in readme
+    assert "./corpusgate upload" in readme
     assert (ROOT / "corpusgate").is_file()
+    assert (ROOT / "scripts" / "upload.sh").is_file()
 
     required_files = (
         "README.md",

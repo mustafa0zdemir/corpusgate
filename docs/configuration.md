@@ -36,6 +36,17 @@ values shown are application defaults unless Compose overrides them.
 | `CORPUSGATE_UPLOAD_BUFFER_BYTES` | `1048576` | No | Streaming upload buffer, 65536–8388608 bytes. | `1048576` |
 | `CORPUSGATE_MIN_FREE_DISK_MB` | `100` | No | Reserved disk threshold; upload fails safely below it. | `100` |
 
+### Upload CLI client variables
+
+These variables are consumed by `./corpusgate upload`, not by the HTTP service. Command-line
+options take precedence. Credential values must remain outside source control.
+
+| Variable | Default | Purpose and security effect | Example |
+|---|---|---|---|
+| `CORPUSGATE_CLIENT_API_KEY` | server REST key from environment or `.env` | Optional client-only REST credential override; never printed or placed in curl arguments. | `random-client-secret` |
+| `CORPUSGATE_BASE_URL` | `http://127.0.0.1:<CORPUSGATE_PORT>` | Client destination. Remote plain HTTP, URL credentials, paths, queries, and fragments are rejected. | `https://docs-node.ts.net` |
+| `CORPUSGATE_UPLOAD_TIMEOUT_SECONDS` | `180` | Client upload/conversion timeout, 1–3600 seconds. | `240` |
+
 ## Chunking, retrieval, and resource limits
 
 | Variable | Default | Range / effect | Example |

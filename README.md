@@ -112,6 +112,18 @@ files remain in `documents/`; private UUID copies are stored in the persistent s
 For a complete lexical→semantic/hybrid→MCP walkthrough, use the
 [synthetic demo](docs/demo.md).
 
+For a one-file workflow that AI tools can invoke without putting file bytes into the model context,
+stream the local file directly to the running REST API (requires `curl`):
+
+```bash
+./corpusgate upload /absolute/path/to/document.pdf
+```
+
+The command reads the REST key from `CORPUSGATE_CLIENT_API_KEY`, `CORPUSGATE_API_KEY`, or the local
+`.env`, never prints it, rejects redirects and insecure remote HTTP, and returns only the API's
+upload metadata. For a remote private server, pass
+`--url https://YOUR-NODE.YOUR-TAILNET.ts.net`.
+
 REST upload is available for applications:
 
 ```bash
@@ -239,6 +251,7 @@ Operational commands:
 ./corpusgate status
 ./corpusgate doctor
 ./corpusgate mcp-smoke
+./corpusgate upload /absolute/path/to/document.pdf
 ./corpusgate scan
 ./corpusgate reindex
 ./corpusgate reindex --semantic

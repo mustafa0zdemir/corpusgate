@@ -13,6 +13,15 @@ cp examples/documents/* documents/
 ./corpusgate mcp-smoke
 ```
 
+To upload one selected local file directly, without copying it into the inbox first:
+
+```bash
+./corpusgate upload examples/documents/private-network-guide.md
+```
+
+The CLI streams bytes to CorpusGate's REST endpoint; an AI tool invoking this command does not need
+to place document content in its prompt or MCP arguments.
+
 Copy a returned Markdown `document_id`, read the REST key from your private `.env`, and run a
 bounded lexical search:
 

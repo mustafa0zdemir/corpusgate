@@ -27,7 +27,7 @@ jobs:
           CORPUSGATE_API_KEY: ci-rest-key-0123456789abcdef
           CORPUSGATE_MCP_AUTH_TOKENS: ci-mcp-key-0123456789abcdef
         run: |
-          sh -n corpusgate scripts/setup.sh
+          sh -n corpusgate scripts/setup.sh scripts/upload.sh
           mkdir -p documents
           docker compose config --quiet
           docker compose -f compose.yaml -f compose.semantic.yaml config --quiet
