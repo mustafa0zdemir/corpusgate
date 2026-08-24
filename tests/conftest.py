@@ -13,12 +13,14 @@ from app.core.config import Settings  # noqa: E402
 from app.main import create_app  # noqa: E402
 
 TEST_API_KEY = "test-api-key-0123456789abcdef"
+TEST_MCP_TOKEN = "test-mcp-token-0123456789abcdef"
 
 
 @pytest.fixture
 def settings(tmp_path) -> Settings:
     return Settings(
         api_key=SecretStr(TEST_API_KEY),
+        mcp_auth_tokens=SecretStr(TEST_MCP_TOKEN),
         environment="test",
         data_dir=tmp_path / "data",
         database_url=f"sqlite:///{tmp_path / 'test.db'}",

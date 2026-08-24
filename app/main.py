@@ -16,7 +16,8 @@ from app.chunking.markdown import MarkdownChunkStrategy
 from app.core.config import Settings, get_settings
 from app.core.database import Database
 from app.core.errors import AppError
-from app.core.security import ApiKeyMiddleware
+from app.core.logging import RequestLoggingMiddleware, configure_logging
+from app.core.security import AuthenticationMiddleware
 from app.mcp.server import create_mcp_server
 from app.parsers.markitdown import MarkItDownDocumentParser
 from app.storage.local import LocalFileStorage
@@ -26,6 +27,7 @@ logger = logging.getLogger("private_document_gateway")
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
+    configure_logging(settings)
     database = Database(settings)
     storage = LocalFileStorage(settings.data_dir, settings.max_file_size_mb)
     parser = MarkItDownDocumentParser()
@@ -65,7 +67,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.chunker = chunker
     app.state.mcp_server = mcp_server
 
-    app.add_middleware(ApiKeyMiddleware, settings=settings)
+    app.add_middleware(AuthenticationMiddleware, settings=settings)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,
@@ -77,10 +79,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "Last-Event-ID",
             "Mcp-Protocol-Version",
             "Mcp-Session-Id",
+            "Authorization",
             "X-API-Key",
         ],
         expose_headers=["Mcp-Session-Id"],
     )
+    app.add_middleware(RequestLoggingMiddleware)
 
     @app.exception_handler(AppError)
     async def app_error_handler(_request: Request, exc: AppError) -> JSONResponse:
@@ -105,7 +109,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.exception_handler(Exception)
     async def unhandled_error_handler(_request: Request, _exc: Exception) -> JSONResponse:
-        logger.exception("Unhandled request error")
+        logger.error(
+            "unhandled_request_error",
+            extra={"event": "unhandled_request_error", "error_type": type(_exc).__name__},
+        )
         return JSONResponse(
             status_code=500,
             content={
@@ -118,7 +125,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/health", tags=["system"])
     def health() -> dict[str, str]:
-        return {"status": "ok", "service": settings.app_name, "version": settings.app_version}
+        return {"status": "ok"}
+
+    @app.get("/ready", tags=["system"])
+    def ready() -> JSONResponse:
+        if database.is_ready():
+            return JSONResponse({"status": "ready"})
+        return JSONResponse({"status": "not_ready"}, status_code=503)
 
     app.include_router(documents_router)
     # Keep this last: Mount("/") is the fallback that preserves MCP's canonical /mcp path.

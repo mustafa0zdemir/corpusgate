@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
+from time import perf_counter
 from typing import BinaryIO
 from uuid import uuid4
 
@@ -13,6 +15,8 @@ from app.parsers.base import DocumentParser
 from app.repositories.base import DocumentRepository
 from app.services.file_validation import validate_file_signature, validate_upload_metadata
 from app.storage.base import FileStorage, StoredFile
+
+logger = logging.getLogger("private_document_gateway.documents")
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,6 +72,16 @@ class DocumentService:
         existing = self.repository.get_by_hash(stored.sha256)
         if existing is not None:
             self.storage.delete(stored.relative_path)
+            logger.info(
+                "document_upload",
+                extra={
+                    "event": "document_upload",
+                    "document_id": existing.id,
+                    "file_type": extension,
+                    "cache_hit": True,
+                    "chunk_count": existing.chunk_count,
+                },
+            )
             return UploadResult(existing, deduplicated=True)
 
         current = self.repository.get_latest_by_filename(safe_filename)
@@ -95,6 +109,7 @@ class DocumentService:
         return UploadResult(document, deduplicated=False)
 
     def _process(self, document: Document) -> None:
+        started = perf_counter()
         self.repository.update_status(document, DocumentStatus.processing.value)
         markdown_path: str | None = None
         try:
@@ -110,14 +125,27 @@ class DocumentService:
                 markdown_tokens=self.token_estimator.estimate(markdown),
                 chunks=chunks,
             )
+            logger.info(
+                "document_processed",
+                extra={
+                    "event": "document_processed",
+                    "document_id": document.id,
+                    "file_type": document.extension,
+                    "cache_hit": False,
+                    "chunk_count": len(chunks),
+                    "duration_ms": round((perf_counter() - started) * 1000, 3),
+                },
+            )
         except AppError as exc:
             self.storage.delete(markdown_path)
             self.repository.update_status(document, DocumentStatus.failed.value, exc.message[:500])
+            self._log_failure(document, exc, started)
             raise
         except Exception as exc:
             self.storage.delete(markdown_path)
             message = "The document could not be processed."
             self.repository.update_status(document, DocumentStatus.failed.value, message)
+            self._log_failure(document, exc, started)
             raise DocumentConversionError(message) from exc
 
     def _replace(
@@ -129,6 +157,7 @@ class DocumentService:
         content_type: str,
         extension: str,
     ) -> UploadResult:
+        started = perf_counter()
         old_storage_path = document.storage_path
         old_markdown_path = document.markdown_path
         new_markdown_path: str | None = None
@@ -162,7 +191,31 @@ class DocumentService:
 
         self.storage.delete(old_storage_path)
         self.storage.delete(old_markdown_path)
+        logger.info(
+            "document_reindexed",
+            extra={
+                "event": "document_reindexed",
+                "document_id": document.id,
+                "file_type": extension,
+                "cache_hit": False,
+                "chunk_count": document.chunk_count,
+                "duration_ms": round((perf_counter() - started) * 1000, 3),
+            },
+        )
         return UploadResult(document, deduplicated=False, reindexed=True)
+
+    @staticmethod
+    def _log_failure(document: Document, exc: Exception, started: float) -> None:
+        logger.warning(
+            "document_processing_failed",
+            extra={
+                "event": "document_processing_failed",
+                "document_id": document.id,
+                "file_type": document.extension,
+                "error_type": type(exc).__name__,
+                "duration_ms": round((perf_counter() - started) * 1000, 3),
+            },
+        )
 
     def get(self, document_id: str) -> Document:
         document = self.repository.get(document_id)

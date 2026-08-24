@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
     api_key: SecretStr = Field(min_length=24)
+    mcp_auth_tokens: SecretStr | None = None
+    mcp_auth_token_file: Path | None = None
 
     data_dir: Path = Path("data")
     database_url: str | None = None
@@ -40,6 +42,11 @@ class Settings(BaseSettings):
     max_response_chars: int = Field(default=24_000, ge=500, le=250_000)
     default_response_max_tokens: int = Field(default=2_000, ge=50, le=32_000)
     max_response_tokens: int = Field(default=6_000, ge=100, le=64_000)
+
+    rate_limit_requests: int = Field(default=120, ge=1, le=100_000)
+    rate_limit_window_seconds: int = Field(default=60, ge=1, le=3_600)
+    log_level: str = "INFO"
+    public_base_url: str | None = None
 
     cors_origins: str = ""
     allowed_hosts: str = "localhost,localhost:*,127.0.0.1,127.0.0.1:*"
@@ -89,6 +96,30 @@ class Settings(BaseSettings):
     @property
     def allowed_host_list(self) -> list[str]:
         return [item.strip() for item in self.allowed_hosts.split(",") if item.strip()]
+
+    def active_mcp_tokens(self) -> tuple[str, ...]:
+        values: list[str] = []
+        if self.mcp_auth_tokens is not None:
+            values.append(self.mcp_auth_tokens.get_secret_value())
+        if self.mcp_auth_token_file is not None:
+            try:
+                values.append(self.mcp_auth_token_file.read_text(encoding="utf-8"))
+            except OSError as exc:
+                raise ValueError("The configured MCP token file cannot be read.") from exc
+        if not values:
+            values.append(self.api_key.get_secret_value())
+
+        tokens = tuple(
+            dict.fromkeys(
+                token.strip()
+                for value in values
+                for token in value.replace("\n", ",").split(",")
+                if token.strip()
+            )
+        )
+        if not tokens or any(len(token) < 24 for token in tokens):
+            raise ValueError("Every MCP authentication token must contain at least 24 characters.")
+        return tokens
 
 
 @lru_cache

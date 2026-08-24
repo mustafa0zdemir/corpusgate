@@ -4,6 +4,7 @@ import base64
 import binascii
 import hashlib
 import json
+import logging
 import re
 import unicodedata
 from abc import ABC, abstractmethod
@@ -19,6 +20,7 @@ from app.repositories.base import DocumentRepository
 from app.repositories.search import SearchIndex
 
 WORD_RE = re.compile(r"\w+", re.UNICODE)
+logger = logging.getLogger("private_document_gateway.search")
 
 
 @dataclass(frozen=True, slots=True)
@@ -197,6 +199,15 @@ class FullTextSearchService(SearchService):
             returned_chunk_count=len(selected),
             search_ms=round((perf_counter() - started) * 1000, 3),
             cache_used=True,
+        )
+        logger.info(
+            "document_search",
+            extra={
+                "event": "document_search",
+                "duration_ms": metrics.search_ms,
+                "result_count": len(selected),
+                "cache_hit": True,
+            },
         )
         return RetrievalPage(
             items=selected,
