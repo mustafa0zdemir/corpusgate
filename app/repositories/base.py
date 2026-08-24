@@ -50,6 +50,10 @@ class DocumentRepository(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def get_chunks_by_ids(self, chunk_ids: list[str]) -> list[tuple[Document, Chunk]]:
+        raise NotImplementedError
+
+    @abstractmethod
     def get_neighbor_chunks(
         self,
         document_id: str,

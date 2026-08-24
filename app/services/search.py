@@ -18,6 +18,14 @@ from app.core.errors import AppError, DocumentNotFoundError
 from app.models.document import Chunk, Document
 from app.repositories.base import DocumentRepository
 from app.repositories.search import SearchIndex
+from app.retrieval.base import StrategyResult
+from app.retrieval.strategies import (
+    HybridRetrievalStrategy,
+    LexicalRetrievalStrategy,
+    SemanticRetrievalStrategy,
+)
+from app.retrieval.types import RankedCandidate, RetrievalFilters, RetrievalMode
+from app.semantic.runtime import SemanticRuntime
 
 WORD_RE = re.compile(r"\w+", re.UNICODE)
 logger = logging.getLogger("private_document_gateway.search")
@@ -45,6 +53,12 @@ class SearchHit:
     content_length: int
     token_count: int
     relation: str = "match"
+    retrieval_mode: str = RetrievalMode.lexical.value
+    semantic_score: float | None = None
+    lexical_rank: int | None = None
+    semantic_rank: int | None = None
+    combined_rank: int | None = None
+    matched_retrieval_modes: tuple[str, ...] = (RetrievalMode.lexical.value,)
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +79,9 @@ class RetrievalPage:
     max_chars: int
     max_tokens: int
     metrics: RetrievalMetrics
+    requested_retrieval_mode: str = RetrievalMode.lexical.value
+    retrieval_mode: str = RetrievalMode.lexical.value
+    fallback_reason: str | None = None
 
 
 class SearchService(ABC):
@@ -79,6 +96,8 @@ class SearchService(ABC):
         max_tokens: int | None = None,
         cursor: str | None = None,
         neighbor_window: int = 0,
+        retrieval_mode: str | None = None,
+        filters: RetrievalFilters | None = None,
     ) -> RetrievalPage:
         raise NotImplementedError
 
@@ -89,12 +108,14 @@ class FullTextSearchService(SearchService):
         settings: Settings,
         repository: DocumentRepository,
         index: SearchIndex,
+        semantic_runtime: SemanticRuntime | None = None,
         estimator: TokenEstimator | None = None,
     ):
         self.settings = settings
         self.repository = repository
         self.index = index
         self.estimator = estimator or ApproximateTokenEstimator()
+        self.semantic_runtime = semantic_runtime or SemanticRuntime(enabled=False)
 
     def search(
         self,
@@ -106,9 +127,19 @@ class FullTextSearchService(SearchService):
         max_tokens: int | None = None,
         cursor: str | None = None,
         neighbor_window: int = 0,
+        retrieval_mode: str | None = None,
+        filters: RetrievalFilters | None = None,
     ) -> RetrievalPage:
         started = perf_counter()
         normalized_ids = list(dict.fromkeys(document_ids or [])) or None
+        supplied_filters = filters or RetrievalFilters()
+        if normalized_ids:
+            supplied_filters = RetrievalFilters(
+                document_ids=tuple(normalized_ids),
+                file_types=supplied_filters.file_types,
+                heading=supplied_filters.heading,
+            )
+        normalized_ids = list(supplied_filters.document_ids) or None
         documents = self._validate_documents(normalized_ids)
         terms = list(dict.fromkeys(WORD_RE.findall(_normalize(query))))
         if not terms:
@@ -127,26 +158,41 @@ class FullTextSearchService(SearchService):
             self.settings.max_response_tokens,
         )
         actual_neighbors = min(max(neighbor_window, 0), self.settings.max_neighbor_window)
-        fingerprint = _cursor_fingerprint("search", query, normalized_ids)
+        requested_mode = self._retrieval_mode(retrieval_mode)
+        fingerprint = _cursor_fingerprint(
+            "search",
+            query,
+            normalized_ids,
+            requested_mode=requested_mode.value,
+            filters=supplied_filters,
+        )
         offset = _decode_cursor(cursor, fingerprint) if cursor else 0
 
         batch_size = max(actual_top_k * 20, 50)
-        candidates = self.index.search(
-            terms,
-            document_ids=normalized_ids,
-            limit=batch_size + 1,
-            offset=offset,
+        strategy_result = self._retrieve(
+            requested_mode,
+            query,
+            supplied_filters,
+            batch_size,
+            offset,
         )
-        has_index_more = len(candidates) > batch_size
-        candidates = candidates[:batch_size]
+        candidates = strategy_result.candidates
+        has_index_more = strategy_result.has_more
         budget = _ContentBudget(actual_chars, actual_tokens, self.estimator)
         selected: list[SearchHit] = []
         selected_chunks: list[Chunk] = []
         matched_documents: dict[str, Document] = {document.id: document for document in documents}
         consumed = 0
+        per_document: dict[str, int] = {}
 
         for candidate in candidates:
             consumed += 1
+            if (
+                self.settings.max_results_per_document
+                and per_document.get(candidate.document.id, 0)
+                >= self.settings.max_results_per_document
+            ):
+                continue
             matched_documents[candidate.document.id] = candidate.document
             related = [candidate.chunk]
             if actual_neighbors:
@@ -182,9 +228,12 @@ class FullTextSearchService(SearchService):
                         candidate.score if relation == "match" else candidate.score / 2,
                         relation,
                         self.estimator,
+                        candidate,
+                        strategy_result.actual_mode,
                     )
                 )
                 selected_chunks.append(chunk)
+                per_document[candidate.document.id] = per_document.get(candidate.document.id, 0) + 1
 
             if len(selected) >= actual_top_k or budget.exhausted:
                 break
@@ -216,7 +265,64 @@ class FullTextSearchService(SearchService):
             max_chars=actual_chars,
             max_tokens=actual_tokens,
             metrics=metrics,
+            requested_retrieval_mode=requested_mode.value,
+            retrieval_mode=strategy_result.actual_mode.value,
+            fallback_reason=strategy_result.fallback_reason,
         )
+
+    def _retrieval_mode(self, value: str | None) -> RetrievalMode:
+        try:
+            mode = RetrievalMode(value or self.settings.default_retrieval_mode)
+        except ValueError as exc:
+            raise AppError(
+                "Retrieval mode must be lexical, semantic, or hybrid.",
+                status_code=422,
+                code="invalid_retrieval_mode",
+            ) from exc
+        if mode is RetrievalMode.lexical_fallback:
+            raise AppError(
+                "lexical_fallback is a response mode, not a request mode.",
+                status_code=422,
+                code="invalid_retrieval_mode",
+            )
+        return mode
+
+    def _retrieve(
+        self,
+        mode: RetrievalMode,
+        query: str,
+        filters: RetrievalFilters,
+        limit: int,
+        offset: int,
+    ) -> StrategyResult:
+        lexical = LexicalRetrievalStrategy(self.index)
+        if mode is RetrievalMode.lexical:
+            return lexical.retrieve(query, filters=filters, limit=limit, offset=offset)
+        semantic = SemanticRetrievalStrategy(
+            self.settings,
+            self.repository,
+            self.semantic_runtime,
+        )
+        strategy = semantic
+        if mode is RetrievalMode.hybrid:
+            strategy = HybridRetrievalStrategy(self.settings, lexical, semantic)
+        try:
+            return strategy.retrieve(query, filters=filters, limit=limit, offset=offset)
+        except Exception as exc:
+            if not self.settings.semantic_fallback_enabled:
+                raise AppError(
+                    "Semantic retrieval is unavailable.",
+                    status_code=503,
+                    code="semantic_unavailable",
+                ) from exc
+            fallback = lexical.retrieve(query, filters=filters, limit=limit, offset=offset)
+            return StrategyResult(
+                fallback.candidates,
+                mode,
+                RetrievalMode.lexical_fallback,
+                has_more=fallback.has_more,
+                fallback_reason=type(exc).__name__,
+            )
 
     def section(
         self,
@@ -274,6 +380,8 @@ class FullTextSearchService(SearchService):
                 search_ms=round((perf_counter() - started) * 1000, 3),
                 cache_used=True,
             ),
+            requested_retrieval_mode=RetrievalMode.lexical.value,
+            retrieval_mode=RetrievalMode.lexical.value,
         )
 
     def _validate_documents(self, document_ids: list[str] | None) -> list[Document]:
@@ -321,6 +429,8 @@ def _hit(
     score: float,
     relation: str,
     estimator: TokenEstimator,
+    candidate: RankedCandidate | None = None,
+    actual_mode: RetrievalMode = RetrievalMode.lexical,
 ) -> SearchHit:
     return SearchHit(
         document_id=document.id,
@@ -340,6 +450,14 @@ def _hit(
         content_length=len(content),
         token_count=estimator.estimate(content),
         relation=relation,
+        retrieval_mode=actual_mode.value,
+        semantic_score=candidate.semantic_score if candidate else None,
+        lexical_rank=candidate.lexical_rank if candidate else None,
+        semantic_rank=candidate.semantic_rank if candidate else None,
+        combined_rank=candidate.combined_rank if candidate else None,
+        matched_retrieval_modes=candidate.matched_retrieval_modes
+        if candidate
+        else (RetrievalMode.lexical.value,),
     )
 
 
@@ -383,9 +501,23 @@ def _normalize(value: str) -> str:
     return unicodedata.normalize("NFKC", value).casefold()
 
 
-def _cursor_fingerprint(kind: str, value: str, document_ids: list[str] | None) -> str:
+def _cursor_fingerprint(
+    kind: str,
+    value: str,
+    document_ids: list[str] | None,
+    *,
+    requested_mode: str = RetrievalMode.lexical.value,
+    filters: RetrievalFilters | None = None,
+) -> str:
     payload = json.dumps(
-        [kind, _normalize(value), sorted(document_ids or [])],
+        [
+            kind,
+            _normalize(value),
+            sorted(document_ids or []),
+            requested_mode,
+            sorted(filters.file_types) if filters else [],
+            filters.heading if filters else None,
+        ],
         ensure_ascii=False,
         separators=(",", ":"),
     )

@@ -21,6 +21,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+semantic = [
+  "fastembed>=0.8,<0.9",
+  "qdrant-client>=1.19,<2",
+]
 dev = [
   "httpx>=0.28,<1",
   "pytest>=8.4,<9",

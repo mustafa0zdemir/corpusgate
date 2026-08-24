@@ -172,6 +172,17 @@ class SQLiteDocumentRepository(DocumentRepository):
         )
         return items, total
 
+    def get_chunks_by_ids(self, chunk_ids: list[str]) -> list[tuple[Document, Chunk]]:
+        if not chunk_ids:
+            return []
+        return list(
+            self.session.execute(
+                select(Document, Chunk)
+                .join(Chunk, Chunk.document_id == Document.id)
+                .where(Chunk.id.in_(chunk_ids))
+            ).all()
+        )
+
     def get_neighbor_chunks(
         self,
         document_id: str,

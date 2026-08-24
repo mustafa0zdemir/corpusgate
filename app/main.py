@@ -21,6 +21,7 @@ from app.core.resources import OperationCapacity
 from app.core.security import AuthenticationMiddleware, RequestBodyLimitMiddleware
 from app.mcp.server import create_mcp_server
 from app.parsers.markitdown import MarkItDownDocumentParser
+from app.semantic.runtime import create_semantic_runtime
 from app.storage.local import LocalFileStorage
 
 logger = logging.getLogger("private_document_gateway")
@@ -43,12 +44,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         queue_timeout=settings.conversion_queue_timeout_seconds,
     )
     parser = MarkItDownDocumentParser()
+    semantic_runtime = create_semantic_runtime(settings)
     chunker = MarkdownChunkStrategy(
         target_tokens=settings.chunk_size_tokens,
         overlap_tokens=settings.chunk_overlap_tokens,
         min_chunk_tokens=settings.min_chunk_tokens,
     )
-    mcp_server = create_mcp_server(settings, database.session_factory)
+    mcp_server = create_mcp_server(
+        settings,
+        database.session_factory,
+        semantic_runtime=semantic_runtime,
+    )
     transport_security = TransportSecuritySettings(
         allowed_hosts=settings.allowed_host_list,
         allowed_origins=settings.cors_origin_list or ["http://localhost:*", "http://127.0.0.1:*"],
@@ -67,6 +73,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 yield
         finally:
             conversion_capacity.shutdown()
+            semantic_runtime.close()
             database.dispose()
 
     app = FastAPI(
@@ -81,6 +88,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.parser = parser
     app.state.chunker = chunker
     app.state.conversion_capacity = conversion_capacity
+    app.state.semantic_runtime = semantic_runtime
     app.state.mcp_server = mcp_server
 
     app.add_middleware(RequestBodyLimitMiddleware, max_bytes=settings.max_request_body_bytes)

@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.errors import OperationTimeoutError
 from app.models.document import Chunk, Document, DocumentStatus
 from app.repositories.search import SearchCandidate, SearchIndex
+from app.retrieval.types import RetrievalFilters
 
 
 class SQLiteFtsSearchIndex(SearchIndex):
@@ -23,28 +24,41 @@ class SQLiteFtsSearchIndex(SearchIndex):
         self,
         terms: list[str],
         *,
-        document_ids: list[str] | None,
+        filters: RetrievalFilters | None = None,
+        document_ids: list[str] | None = None,
         limit: int,
         offset: int = 0,
     ) -> list[SearchCandidate]:
         if not terms or limit <= 0:
             return []
+        filters = filters or RetrievalFilters(document_ids=tuple(document_ids or ()))
 
         match_query = " OR ".join(f'"{term.replace(chr(34), chr(34) * 2)}"' for term in terms)
-        filters = ["chunk_fts MATCH :match_query", "d.status = :ready"]
+        conditions = ["chunk_fts MATCH :match_query", "d.status = :ready"]
         parameters: dict[str, object] = {
             "match_query": match_query,
             "ready": DocumentStatus.ready.value,
             "limit": limit,
             "offset": offset,
         }
-        if document_ids:
+        if filters.document_ids:
             placeholders = []
-            for index, document_id in enumerate(document_ids):
+            for index, document_id in enumerate(filters.document_ids):
                 key = f"document_id_{index}"
                 placeholders.append(f":{key}")
                 parameters[key] = document_id
-            filters.append(f"d.id IN ({', '.join(placeholders)})")
+            conditions.append(f"d.id IN ({', '.join(placeholders)})")
+
+        if filters.file_types:
+            placeholders = []
+            for index, file_type in enumerate(filters.file_types):
+                key = f"file_type_{index}"
+                placeholders.append(f":{key}")
+                parameters[key] = file_type.lower().lstrip(".")
+            conditions.append(f"d.extension IN ({', '.join(placeholders)})")
+        if filters.heading:
+            conditions.append("c.heading = :heading")
+            parameters["heading"] = filters.heading
 
         statement = text(
             "SELECT c.id AS chunk_id, "
@@ -52,7 +66,7 @@ class SQLiteFtsSearchIndex(SearchIndex):
             "FROM chunk_fts "
             "JOIN chunks c ON c.id = chunk_fts.chunk_id "
             "JOIN documents d ON d.id = c.document_id "
-            f"WHERE {' AND '.join(filters)} "
+            f"WHERE {' AND '.join(conditions)} "
             "ORDER BY rank ASC, c.chunk_index ASC "
             "LIMIT :limit OFFSET :offset"
         )

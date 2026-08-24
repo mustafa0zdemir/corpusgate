@@ -15,6 +15,7 @@ from app.models.document import Chunk, Document, DocumentStatus
 from app.parsers.base import DocumentParser
 from app.repositories.base import DocumentRepository
 from app.services.file_validation import validate_file_signature, validate_upload_metadata
+from app.services.semantic_index import SemanticIndexService
 from app.storage.base import FileStorage, StoredFile
 
 logger = logging.getLogger("private_document_gateway.documents")
@@ -37,6 +38,7 @@ class DocumentService:
         storage: FileStorage,
         chunker: ChunkStrategy,
         conversion_capacity: OperationCapacity,
+        semantic_index: SemanticIndexService | None = None,
     ):
         self.settings = settings
         self.repository = repository
@@ -45,6 +47,7 @@ class DocumentService:
         self.chunker = chunker
         self.token_estimator = ApproximateTokenEstimator()
         self.conversion_capacity = conversion_capacity
+        self.semantic_index = semantic_index
 
     def upload(
         self,
@@ -85,6 +88,7 @@ class DocumentService:
                     "chunk_count": existing.chunk_count,
                 },
             )
+            self._sync_semantic(existing)
             return UploadResult(existing, deduplicated=True)
 
         current = self.repository.get_latest_by_filename(safe_filename)
@@ -128,6 +132,7 @@ class DocumentService:
                 markdown_tokens=self.token_estimator.estimate(markdown),
                 chunks=chunks,
             )
+            self._sync_semantic(document)
             logger.info(
                 "document_processed",
                 extra={
@@ -186,6 +191,7 @@ class DocumentService:
                 markdown_tokens=self.token_estimator.estimate(markdown),
                 chunks=chunks,
             )
+            self._sync_semantic(document)
         except AppError as exc:
             if exc.code != "conversion_timeout":
                 self.storage.delete(stored.relative_path)
@@ -266,6 +272,30 @@ class DocumentService:
         self.storage.delete(document.storage_path)
         self.storage.delete(document.markdown_path)
         self.repository.delete(document)
+        if self.semantic_index is not None:
+            try:
+                self.semantic_index.delete_document(document_id)
+            except Exception as exc:
+                self._log_semantic_failure(document_id, exc)
+
+    def _sync_semantic(self, document: Document) -> None:
+        if self.semantic_index is None:
+            return
+        try:
+            self.semantic_index.sync_document(document)
+        except Exception as exc:
+            self._log_semantic_failure(document.id, exc)
+
+    @staticmethod
+    def _log_semantic_failure(document_id: str, exc: Exception) -> None:
+        logger.warning(
+            "semantic_index_unavailable",
+            extra={
+                "event": "semantic_index_unavailable",
+                "document_id": document_id,
+                "error_type": type(exc).__name__,
+            },
+        )
 
     def rebuild_cache(self, document: Document, *, force: bool = False) -> bool:
         if not self.storage.exists(document.storage_path):

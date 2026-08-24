@@ -58,6 +58,28 @@ class Settings(BaseSettings):
     conversion_queue_timeout_seconds: int = Field(default=5, ge=0, le=300)
     search_timeout_seconds: int = Field(default=10, ge=1, le=300)
 
+    semantic_enabled: bool = False
+    semantic_fallback_enabled: bool = True
+    default_retrieval_mode: str = "lexical"
+    embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    embedding_model_version: str = "fastembed-0.8.0-onnx-q"
+    embedding_dimension: int = Field(default=384, ge=32, le=8_192)
+    embedding_query_prefix: str = ""
+    embedding_passage_prefix: str = ""
+    embedding_cache_dir: Path = Path("/models")
+    embedding_offline: bool = False
+    embedding_batch_size: int = Field(default=32, ge=1, le=512)
+    embedding_threads: int = Field(default=2, ge=1, le=64)
+    max_concurrent_embeddings: int = Field(default=1, ge=1, le=8)
+    embedding_timeout_seconds: int = Field(default=180, ge=1, le=3_600)
+    embedding_queue_timeout_seconds: int = Field(default=5, ge=0, le=300)
+    vector_store_url: str = "http://qdrant:6333"
+    vector_collection: str = "pdg_chunks_v1"
+    vector_store_timeout_seconds: int = Field(default=10, ge=1, le=300)
+    semantic_min_score: float = Field(default=0.25, ge=-1.0, le=1.0)
+    hybrid_rrf_k: int = Field(default=60, ge=1, le=1_000)
+    max_results_per_document: int = Field(default=3, ge=0, le=100)
+
     cors_origins: str = ""
     allowed_hosts: str = "localhost,localhost:*,127.0.0.1,127.0.0.1:*"
 
@@ -76,6 +98,14 @@ class Settings(BaseSettings):
         if value > chunk_size:
             raise ValueError("minimum chunk size must not exceed chunk size")
         return value
+
+    @field_validator("default_retrieval_mode")
+    @classmethod
+    def retrieval_mode_must_be_supported(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"lexical", "semantic", "hybrid"}:
+            raise ValueError("default retrieval mode must be lexical, semantic, or hybrid")
+        return normalized
 
     @property
     def uploads_dir(self) -> Path:

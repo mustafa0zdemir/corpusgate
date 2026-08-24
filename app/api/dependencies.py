@@ -15,6 +15,7 @@ from app.repositories.sqlite import SQLiteDocumentRepository
 from app.repositories.sqlite_fts import SQLiteFtsSearchIndex
 from app.services.documents import DocumentService
 from app.services.search import FullTextSearchService
+from app.services.semantic_index import SemanticIndexService
 from app.storage.base import FileStorage
 
 
@@ -46,6 +47,13 @@ def get_document_service(request: Request, repository: RepositoryDependency) -> 
         storage=storage,
         chunker=chunker,
         conversion_capacity=conversion_capacity,
+        semantic_index=SemanticIndexService(
+            settings,
+            repository,
+            request.app.state.semantic_runtime,
+        )
+        if settings.semantic_enabled
+        else None,
     )
 
 
@@ -64,6 +72,7 @@ def get_search_service(
             session,
             timeout_seconds=request.app.state.settings.search_timeout_seconds,
         ),
+        request.app.state.semantic_runtime,
     )
 
 

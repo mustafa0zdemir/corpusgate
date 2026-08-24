@@ -13,6 +13,8 @@ from app.core.database import Database
 from app.core.errors import AppError
 from app.repositories.sqlite import SQLiteDocumentRepository
 from app.repositories.sqlite_fts import SQLiteFtsSearchIndex
+from app.retrieval.types import RetrievalFilters
+from app.semantic.runtime import SemanticRuntime
 from app.services.search import FullTextSearchService, RetrievalPage
 
 READ_ONLY = ToolAnnotations(
@@ -23,7 +25,13 @@ READ_ONLY = ToolAnnotations(
 )
 
 
-def create_mcp_server(settings: Settings, sessions: sessionmaker) -> MCPServer:
+def create_mcp_server(
+    settings: Settings,
+    sessions: sessionmaker,
+    *,
+    semantic_runtime: SemanticRuntime | None = None,
+) -> MCPServer:
+    semantic_runtime = semantic_runtime or SemanticRuntime(enabled=False)
     server = MCPServer(
         "Private Document Gateway",
         version=settings.app_version,
@@ -81,6 +89,21 @@ def create_mcp_server(settings: Settings, sessions: sessionmaker) -> MCPServer:
             int,
             Field(ge=0, description="Optional adjacent chunks on each side; server-capped"),
         ] = 0,
+        retrieval_mode: Annotated[
+            str | None,
+            Field(description="lexical, semantic, or hybrid; server default when omitted"),
+        ] = None,
+        document_ids: Annotated[
+            list[str] | None,
+            Field(description="Optional document UUID allowlist; at most 10"),
+        ] = None,
+        file_types: Annotated[
+            list[str] | None,
+            Field(description="Optional file extension filter, such as pdf or docx"),
+        ] = None,
+        heading: Annotated[
+            str | None, Field(description="Optional exact Markdown heading filter")
+        ] = None,
     ) -> dict[str, Any]:
         """Find the best bounded chunks across all ready documents.
 
@@ -91,12 +114,16 @@ def create_mcp_server(settings: Settings, sessions: sessionmaker) -> MCPServer:
             settings,
             sessions,
             query=query,
-            document_ids=None,
+            document_ids=document_ids,
             top_k=top_k,
             max_chars=max_chars,
             max_tokens=max_tokens,
             cursor=cursor,
             neighbor_window=neighbor_window,
+            retrieval_mode=retrieval_mode,
+            file_types=file_types,
+            heading=heading,
+            semantic_runtime=semantic_runtime,
         )
 
     @server.tool(annotations=READ_ONLY)
@@ -117,6 +144,12 @@ def create_mcp_server(settings: Settings, sessions: sessionmaker) -> MCPServer:
             int,
             Field(ge=0, description="Optional adjacent chunks on each side; server-capped"),
         ] = 0,
+        include_neighbors: Annotated[
+            bool, Field(description="Include at most one adjacent chunk on each side")
+        ] = False,
+        retrieval_mode: Annotated[
+            str | None, Field(description="lexical, semantic, or hybrid")
+        ] = None,
     ) -> dict[str, Any]:
         """Search one known document and return relevance-ranked source chunks under budget."""
         return _search_payload(
@@ -128,7 +161,11 @@ def create_mcp_server(settings: Settings, sessions: sessionmaker) -> MCPServer:
             max_chars=max_chars,
             max_tokens=max_tokens,
             cursor=cursor,
-            neighbor_window=neighbor_window,
+            neighbor_window=max(neighbor_window, int(include_neighbors)),
+            retrieval_mode=retrieval_mode,
+            file_types=None,
+            heading=None,
+            semantic_runtime=semantic_runtime,
         )
 
     @server.tool(annotations=READ_ONLY)
@@ -154,6 +191,15 @@ def create_mcp_server(settings: Settings, sessions: sessionmaker) -> MCPServer:
             int,
             Field(ge=0, description="Optional adjacent chunks on each side; server-capped"),
         ] = 0,
+        retrieval_mode: Annotated[
+            str | None, Field(description="lexical, semantic, or hybrid")
+        ] = None,
+        file_types: Annotated[
+            list[str] | None, Field(description="Optional file extension filter")
+        ] = None,
+        heading: Annotated[
+            str | None, Field(description="Optional exact Markdown heading filter")
+        ] = None,
     ) -> dict[str, Any]:
         """Build a small, deduplicated context set from an optional document allowlist."""
         if document_ids is not None and len(document_ids) > 10:
@@ -168,6 +214,10 @@ def create_mcp_server(settings: Settings, sessions: sessionmaker) -> MCPServer:
             max_tokens=max_tokens,
             cursor=cursor,
             neighbor_window=neighbor_window,
+            retrieval_mode=retrieval_mode,
+            file_types=file_types,
+            heading=heading,
+            semantic_runtime=semantic_runtime,
         )
 
     @server.tool(annotations=READ_ONLY)
@@ -202,6 +252,7 @@ def create_mcp_server(settings: Settings, sessions: sessionmaker) -> MCPServer:
                         session,
                         timeout_seconds=settings.search_timeout_seconds,
                     ),
+                    semantic_runtime,
                 ).section(
                     document_id,
                     start_chunk=start_chunk,
@@ -228,6 +279,10 @@ def _search_payload(
     max_tokens: int | None,
     cursor: str | None,
     neighbor_window: int,
+    retrieval_mode: str | None,
+    file_types: list[str] | None,
+    heading: str | None,
+    semantic_runtime: SemanticRuntime,
 ) -> dict[str, Any]:
     try:
         with sessions() as session:
@@ -239,6 +294,7 @@ def _search_payload(
                     session,
                     timeout_seconds=settings.search_timeout_seconds,
                 ),
+                semantic_runtime,
             ).search(
                 query,
                 document_ids=document_ids,
@@ -247,6 +303,14 @@ def _search_payload(
                 max_tokens=max_tokens,
                 cursor=cursor,
                 neighbor_window=neighbor_window,
+                retrieval_mode=retrieval_mode,
+                filters=RetrievalFilters(
+                    document_ids=tuple(document_ids or ()),
+                    file_types=tuple(
+                        value.lower().lstrip(".") for value in (file_types or ())
+                    ),
+                    heading=heading,
+                ),
             )
     except AppError as exc:
         raise ValueError(exc.message) from exc
@@ -261,6 +325,9 @@ def _page_payload(query: str | None, page: RetrievalPage) -> dict[str, Any]:
         "max_tokens": page.max_tokens,
         "next_cursor": page.next_cursor,
         "metrics": asdict(page.metrics),
+        "requested_retrieval_mode": page.requested_retrieval_mode,
+        "retrieval_mode": page.retrieval_mode,
+        "fallback_reason": page.fallback_reason,
     }
     if query is not None:
         payload["query"] = query

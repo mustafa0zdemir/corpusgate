@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
 from app.models.document import Chunk, Document
+from app.retrieval.types import RetrievalFilters
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,7 +22,8 @@ class SearchIndex(ABC):
         self,
         terms: list[str],
         *,
-        document_ids: list[str] | None,
+        filters: RetrievalFilters | None = None,
+        document_ids: list[str] | None = None,
         limit: int,
         offset: int = 0,
     ) -> list[SearchCandidate]:
