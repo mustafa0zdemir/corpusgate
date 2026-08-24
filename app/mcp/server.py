@@ -104,12 +104,22 @@ def create_mcp_server(
         heading: Annotated[
             str | None, Field(description="Optional exact Markdown heading filter")
         ] = None,
+        filters: Annotated[
+            dict[str, Any] | None,
+            Field(description="Optional document_ids, file_types, and heading filter object"),
+        ] = None,
     ) -> dict[str, Any]:
         """Find the best bounded chunks across all ready documents.
 
         Use this when the relevant document is not yet known. Results include source and
         position metadata; the complete documents are never returned.
         """
+        document_ids, file_types, heading = _merge_filters(
+            filters,
+            document_ids=document_ids,
+            file_types=file_types,
+            heading=heading,
+        )
         return _search_payload(
             settings,
             sessions,
@@ -200,8 +210,18 @@ def create_mcp_server(
         heading: Annotated[
             str | None, Field(description="Optional exact Markdown heading filter")
         ] = None,
+        filters: Annotated[
+            dict[str, Any] | None,
+            Field(description="Optional document_ids, file_types, and heading filter object"),
+        ] = None,
     ) -> dict[str, Any]:
         """Build a small, deduplicated context set from an optional document allowlist."""
+        document_ids, file_types, heading = _merge_filters(
+            filters,
+            document_ids=document_ids,
+            file_types=file_types,
+            heading=heading,
+        )
         if document_ids is not None and len(document_ids) > 10:
             raise ValueError("At most 10 document IDs may be supplied.")
         return _search_payload(
@@ -347,6 +367,39 @@ def _document_metadata(document) -> dict[str, Any]:
         "created_at": document.created_at.isoformat(),
         "updated_at": document.updated_at.isoformat(),
     }
+
+
+def _merge_filters(
+    filters: dict[str, Any] | None,
+    *,
+    document_ids: list[str] | None,
+    file_types: list[str] | None,
+    heading: str | None,
+) -> tuple[list[str] | None, list[str] | None, str | None]:
+    if not filters:
+        return document_ids, file_types, heading
+    unknown = set(filters) - {"document_ids", "file_types", "heading"}
+    if unknown:
+        raise ValueError("Unsupported retrieval filter.")
+    try:
+        merged_ids = document_ids or filters.get("document_ids")
+        merged_types = file_types or filters.get("file_types")
+        merged_heading = heading or filters.get("heading")
+        if merged_ids is not None and (
+            not isinstance(merged_ids, list)
+            or not all(isinstance(value, str) for value in merged_ids)
+        ):
+            raise TypeError
+        if merged_types is not None and (
+            not isinstance(merged_types, list)
+            or not all(isinstance(value, str) for value in merged_types)
+        ):
+            raise TypeError
+        if merged_heading is not None and not isinstance(merged_heading, str):
+            raise TypeError
+    except TypeError as exc:
+        raise ValueError("Retrieval filters have invalid values.") from exc
+    return merged_ids, merged_types, merged_heading
 
 
 def run_stdio() -> None:

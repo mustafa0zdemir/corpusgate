@@ -79,7 +79,8 @@ point'in SQLite karşılığı olmadığı için sonuç olarak sunulmaz ve sonra
 
 `search_documents`, `search_document` ve `get_relevant_chunks` araçları `retrieval_mode` alır.
 İlki ayrıca `document_ids`; tüm genel retrieval araçları `file_types` ve exact `heading` filtresi
-alabilir. `top_k`, `max_chars`, `max_tokens`, cursor, duplicate/overlap temizleme ve sınırlı komşu
+alabilir. Aynı alanlar yapılandırılmış `filters` nesnesiyle de verilebilir. `top_k`, `max_chars`,
+`max_tokens`, cursor, duplicate/overlap temizleme ve sınırlı komşu
 chunk genişletmesi bütün modlardan sonra ortak ve kesin uygulanır.
 
 Şu durumlarda, fallback açıksa, response modu `lexical_fallback` olur: model/cache yüklenememesi,
