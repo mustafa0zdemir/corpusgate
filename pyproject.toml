@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "private-document-gateway"
-version = "0.3.0"
+version = "0.4.0"
 description = "Self-hosted, secure document-to-Markdown gateway for LLM tools"
 readme = "README.md"
 requires-python = ">=3.12,<3.15"
@@ -37,6 +37,8 @@ private-document-gateway = "app.main:run"
 private-document-gateway-mcp = "app.mcp.server:run_stdio"
 private-document-gateway-backup = "app.maintenance.backup:main"
 private-document-gateway-reindex-cache = "app.maintenance.reindex:main"
+private-document-gateway-semantic = "app.maintenance.semantic:main"
+private-document-gateway-evaluate = "app.maintenance.evaluate:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]

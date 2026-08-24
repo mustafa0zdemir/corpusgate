@@ -89,19 +89,18 @@ class QdrantVectorStore(VectorStore):
         self,
         document_id: str,
         *,
-        embedding_model: str,
-        embedding_version: str,
+        embedding_model: str | None = None,
+        embedding_version: str | None = None,
     ) -> list[VectorRecord]:
         models = _models()
         records: list[VectorRecord] = []
         offset = None
-        query_filter = models.Filter(
-            must=[
-                _match("document_id", document_id),
-                _match("embedding_model", embedding_model),
-                _match("embedding_version", embedding_version),
-            ]
-        )
+        must = [_match("document_id", document_id)]
+        if embedding_model:
+            must.append(_match("embedding_model", embedding_model))
+        if embedding_version:
+            must.append(_match("embedding_version", embedding_version))
+        query_filter = models.Filter(must=must)
         try:
             while True:
                 points, offset = self.client.scroll(

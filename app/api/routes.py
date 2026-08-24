@@ -113,6 +113,7 @@ def search_document(
     max_tokens: Annotated[int, Query(ge=1, le=64_000)] = 2_000,
     cursor: Annotated[str | None, Query(max_length=500)] = None,
     neighbor_window: Annotated[int, Query(ge=0, le=3)] = 0,
+    retrieval_mode: Annotated[str | None, Query()] = None,
 ) -> SearchResponse:
     page = search_service.search(
         q,
@@ -122,6 +123,7 @@ def search_document(
         max_tokens=max_tokens,
         cursor=cursor,
         neighbor_window=neighbor_window,
+        retrieval_mode=retrieval_mode,
     )
     return SearchResponse(
         query=q,
@@ -131,6 +133,9 @@ def search_document(
         max_tokens=page.max_tokens,
         next_cursor=page.next_cursor,
         metrics=asdict(page.metrics),
+        requested_retrieval_mode=page.requested_retrieval_mode,
+        retrieval_mode=page.retrieval_mode,
+        fallback_reason=page.fallback_reason,
     )
 
 

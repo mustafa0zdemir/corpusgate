@@ -45,12 +45,14 @@ class SemanticIndexService:
             embedding_version=provider.model_version,
         )
         chunks, _ = self.repository.list_chunks(document.id, 0, max(document.chunk_count, 1))
-        previous = store.list_document_records(
-            document.id,
-            embedding_model=provider.model_name,
-            embedding_version=provider.model_version,
-        )
-        reusable = {record.content_hash: record.vector for record in previous}
+        previous = store.list_document_records(document.id)
+        reusable = {
+            record.content_hash: record.vector
+            for record in previous
+            if record.embedding_model == provider.model_name
+            and record.embedding_version == provider.model_version
+            and len(record.vector) == provider.dimension
+        }
         hashes = {chunk.id: _content_hash(chunk.content) for chunk in chunks}
         missing = [chunk for chunk in chunks if hashes[chunk.id] not in reusable]
         vectors = (

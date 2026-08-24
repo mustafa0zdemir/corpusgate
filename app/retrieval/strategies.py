@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from time import perf_counter
 
 from app.core.config import Settings
 from app.embeddings.base import EmbeddingUnavailableError
@@ -26,6 +27,7 @@ class LexicalRetrievalStrategy(RetrievalStrategy):
         limit: int,
         offset: int = 0,
     ) -> StrategyResult:
+        started = perf_counter()
         terms = list(dict.fromkeys(WORD_RE.findall(_normalize(query))))
         candidates = self.index.search(terms, filters=filters, limit=limit + 1, offset=offset)
         has_more = len(candidates) > limit
@@ -45,6 +47,7 @@ class LexicalRetrievalStrategy(RetrievalStrategy):
             RetrievalMode.lexical,
             RetrievalMode.lexical,
             has_more=has_more,
+            timings_ms={"lexical_search_ms": round((perf_counter() - started) * 1000, 3)},
         )
 
 
@@ -80,10 +83,13 @@ class SemanticRetrievalStrategy(RetrievalStrategy):
             embedding_model=provider.model_name,
             embedding_version=provider.model_version,
         )
+        embedding_started = perf_counter()
         query_vector = capacity.run(
             lambda: provider.embed_query(query),
             timeout=self.settings.embedding_timeout_seconds,
         )
+        query_embedding_ms = round((perf_counter() - embedding_started) * 1000, 3)
+        search_started = perf_counter()
         hits = store.search(
             query_vector,
             filters=filters,
@@ -92,6 +98,7 @@ class SemanticRetrievalStrategy(RetrievalStrategy):
             limit=limit + 1,
             offset=offset,
         )
+        semantic_search_ms = round((perf_counter() - search_started) * 1000, 3)
         hits = [hit for hit in hits if hit.score >= self.settings.semantic_min_score]
         rows = self.repository.get_chunks_by_ids([hit.chunk_id for hit in hits[:limit]])
         by_id = {chunk.id: (document, chunk) for document, chunk in rows}
@@ -116,6 +123,10 @@ class SemanticRetrievalStrategy(RetrievalStrategy):
             RetrievalMode.semantic,
             RetrievalMode.semantic,
             has_more=len(hits) > limit,
+            timings_ms={
+                "query_embedding_ms": query_embedding_ms,
+                "semantic_search_ms": semantic_search_ms,
+            },
         )
 
 
@@ -138,6 +149,7 @@ class HybridRetrievalStrategy(RetrievalStrategy):
         limit: int,
         offset: int = 0,
     ) -> StrategyResult:
+        started = perf_counter()
         pool_size = max((offset + limit) * 3, 30)
         lexical = self.lexical.retrieve(query, filters=filters, limit=pool_size)
         semantic = self.semantic.retrieve(query, filters=filters, limit=pool_size)
@@ -193,6 +205,11 @@ class HybridRetrievalStrategy(RetrievalStrategy):
             RetrievalMode.hybrid,
             RetrievalMode.hybrid,
             has_more=offset + limit < len(ordered),
+            timings_ms={
+                **lexical.timings_ms,
+                **semantic.timings_ms,
+                "hybrid_search_ms": round((perf_counter() - started) * 1000, 3),
+            },
         )
 
 

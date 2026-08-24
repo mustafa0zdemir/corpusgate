@@ -58,8 +58,8 @@ class VectorStore(ABC):
         self,
         document_id: str,
         *,
-        embedding_model: str,
-        embedding_version: str,
+        embedding_model: str | None = None,
+        embedding_version: str | None = None,
     ) -> list[VectorRecord]:
         raise NotImplementedError
 

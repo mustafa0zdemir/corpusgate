@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "Private Document Gateway"
-    app_version: str = "0.3.0"
+    app_version: str = "0.4.0"
     environment: str = "production"
     host: str = "0.0.0.0"
     port: int = 8000

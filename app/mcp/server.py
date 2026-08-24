@@ -306,9 +306,7 @@ def _search_payload(
                 retrieval_mode=retrieval_mode,
                 filters=RetrievalFilters(
                     document_ids=tuple(document_ids or ()),
-                    file_types=tuple(
-                        value.lower().lstrip(".") for value in (file_types or ())
-                    ),
+                    file_types=tuple(value.lower().lstrip(".") for value in (file_types or ())),
                     heading=heading,
                 ),
             )

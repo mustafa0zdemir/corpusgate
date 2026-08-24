@@ -102,6 +102,12 @@ class SearchHitResponse(BaseModel):
     content_length: int
     token_count: int
     relation: str
+    retrieval_mode: str
+    semantic_score: float | None
+    lexical_rank: int | None
+    semantic_rank: int | None
+    combined_rank: int | None
+    matched_retrieval_modes: tuple[str, ...]
 
 
 class RetrievalMetricsResponse(BaseModel):
@@ -111,6 +117,10 @@ class RetrievalMetricsResponse(BaseModel):
     returned_chunk_count: int
     search_ms: float
     cache_used: bool
+    lexical_search_ms: float | None = None
+    query_embedding_ms: float | None = None
+    semantic_search_ms: float | None = None
+    hybrid_search_ms: float | None = None
 
 
 class SearchResponse(BaseModel):
@@ -121,3 +131,6 @@ class SearchResponse(BaseModel):
     max_tokens: int
     next_cursor: str | None
     metrics: RetrievalMetricsResponse
+    requested_retrieval_mode: str
+    retrieval_mode: str
+    fallback_reason: str | None

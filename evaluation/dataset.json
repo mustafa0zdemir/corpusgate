@@ -1,0 +1,33 @@
+{
+  "documents": [
+    {
+      "name": "operations-tr.md",
+      "chunks": [
+        {"heading": "Yedekleme", "content": "Her gece belge klasörü, Markdown önbelleği ve SQLite veritabanı birlikte yedeklenir. Geri yükleme öncesinde servis durdurulur."},
+        {"heading": "Erişim", "content": "Özel kurulumda uygulama portu internete açılmaz. İstemciler Tailscale ağı üzerinden Bearer token ile MCP sunucusuna bağlanır."}
+      ]
+    },
+    {
+      "name": "handbook-en.md",
+      "chunks": [
+        {"heading": "Leave policy", "content": "Employees request annual leave at least five business days before the planned absence. Managers respond within two business days."},
+        {"heading": "Equipment", "content": "Company laptops must use full disk encryption and install security updates within seven days of release."}
+      ]
+    },
+    {
+      "name": "service-guide.md",
+      "chunks": [
+        {"heading": "Recovery", "content": "If the Markdown cache is lost, rebuild it from the original documents, which remain the authoritative source of data."},
+        {"heading": "Search limits", "content": "Retrieval returns only ranked chunks. Character and estimated token budgets stop the response before the complete document is exposed."}
+      ]
+    }
+  ],
+  "queries": [
+    {"id": "tr-semantic", "query": "Verilerimi bir arıza sonrasında nasıl geri getirebilirim?", "expected": ["operations-tr.md#Yedekleme", "service-guide.md#Recovery"]},
+    {"id": "tr-exact", "query": "Tailscale Bearer token", "expected": ["operations-tr.md#Erişim"]},
+    {"id": "en-semantic", "query": "How early should vacation be submitted?", "expected": ["handbook-en.md#Leave policy"]},
+    {"id": "en-exact", "query": "full disk encryption", "expected": ["handbook-en.md#Equipment"]},
+    {"id": "multi-document", "query": "original documents and database backup recovery", "expected": ["operations-tr.md#Yedekleme", "service-guide.md#Recovery"]},
+    {"id": "irrelevant", "query": "Mars yüzeyindeki volkanların tarihi", "expected": []}
+  ]
+}

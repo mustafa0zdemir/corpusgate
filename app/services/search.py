@@ -69,6 +69,10 @@ class RetrievalMetrics:
     returned_chunk_count: int
     search_ms: float
     cache_used: bool
+    lexical_search_ms: float | None = None
+    query_embedding_ms: float | None = None
+    semantic_search_ms: float | None = None
+    hybrid_search_ms: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -248,6 +252,10 @@ class FullTextSearchService(SearchService):
             returned_chunk_count=len(selected),
             search_ms=round((perf_counter() - started) * 1000, 3),
             cache_used=True,
+            lexical_search_ms=strategy_result.timings_ms.get("lexical_search_ms"),
+            query_embedding_ms=strategy_result.timings_ms.get("query_embedding_ms"),
+            semantic_search_ms=strategy_result.timings_ms.get("semantic_search_ms"),
+            hybrid_search_ms=strategy_result.timings_ms.get("hybrid_search_ms"),
         )
         logger.info(
             "document_search",
@@ -322,6 +330,7 @@ class FullTextSearchService(SearchService):
                 RetrievalMode.lexical_fallback,
                 has_more=fallback.has_more,
                 fallback_reason=type(exc).__name__,
+                timings_ms=fallback.timings_ms,
             )
 
     def section(

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from app.retrieval.types import RankedCandidate, RetrievalFilters, RetrievalMode
 
@@ -13,6 +13,7 @@ class StrategyResult:
     actual_mode: RetrievalMode
     has_more: bool = False
     fallback_reason: str | None = None
+    timings_ms: dict[str, float] = field(default_factory=dict)
 
 
 class RetrievalStrategy(ABC):

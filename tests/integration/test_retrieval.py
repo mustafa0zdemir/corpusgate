@@ -141,3 +141,26 @@ def test_neighbors_are_opt_in_limited_and_budgeted(
     assert len({item["chunk_id"] for item in with_neighbors["items"]}) == len(
         with_neighbors["items"]
     )
+
+
+def test_semantic_request_reports_fallback_and_invalid_mode_is_controlled(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    document_id = _upload(client, auth_headers)
+    fallback = client.get(
+        f"/api/v1/documents/{document_id}/search",
+        headers=auth_headers,
+        params={"q": "centralneedle", "retrieval_mode": "semantic"},
+    )
+    assert fallback.status_code == 200
+    assert fallback.json()["requested_retrieval_mode"] == "semantic"
+    assert fallback.json()["retrieval_mode"] == "lexical_fallback"
+    assert fallback.json()["items"]
+
+    invalid = client.get(
+        f"/api/v1/documents/{document_id}/search",
+        headers=auth_headers,
+        params={"q": "centralneedle", "retrieval_mode": "unsupported"},
+    )
+    assert invalid.status_code == 422
+    assert invalid.json()["error"]["code"] == "invalid_retrieval_mode"
