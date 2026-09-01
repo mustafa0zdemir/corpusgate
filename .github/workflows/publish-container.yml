@@ -21,7 +21,7 @@ jobs:
     if: inputs.confirm_publish == 'PUBLISH'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.release_tag }}
       - uses: actions/setup-python@v6
