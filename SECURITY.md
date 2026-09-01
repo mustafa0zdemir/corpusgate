@@ -20,6 +20,17 @@ or have explicit permission to assess.
 Until `1.0.0`, only the latest released minor version receives security fixes. Operators should
 backup persistent data before upgrading and subscribe to repository release notifications.
 
+## Dependency maintenance
+
+The repository uses Dependabot to propose weekly updates for Python dependencies, container
+images, Docker Compose services, and GitHub Actions. Dependabot alerts and security updates should
+remain enabled in the repository's **Settings → Advanced Security** page. Automated pull requests
+are reviewed and tested before merge; automatic merging is intentionally not part of the policy.
+
+Dependabot complements, rather than replaces, the CI container vulnerability scan and secret
+scan. Maintainers should review unresolved alerts before each release and document any accepted
+risk in the release notes.
+
 ## Deployment boundary
 
 CorpusGate protects its own HTTP/MCP surface and file roots. The operator remains

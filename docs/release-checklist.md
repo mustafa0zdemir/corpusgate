@@ -5,6 +5,7 @@
 - [ ] Version is consistent in `app/_version.py`, CLI, package metadata, image labels, and status.
 - [ ] `CHANGELOG.md` reflects the actual implementation and known limitations.
 - [ ] MIT license and dependency/model licenses were reviewed.
+- [ ] Dependabot alerts and pending dependency security updates were reviewed.
 - [ ] No real document, `.env`, token, database, backup, cache, or model artifact is tracked.
 - [ ] Secret scan passed and the security policy is reachable.
 

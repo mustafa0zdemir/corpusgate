@@ -19,6 +19,17 @@ clear product reason and a compatible open-source license.
 
 Security vulnerabilities must follow [SECURITY.md](SECURITY.md), not a public issue.
 
+## Dependency updates
+
+Dependabot checks Python packages, container images, Docker Compose services, and GitHub Actions
+weekly. Minor and patch updates may be grouped to reduce pull-request noise; major updates remain
+separate so their migration and compatibility impact is visible.
+
+Dependabot pull requests are not merged automatically. They must pass the normal CI pipeline and
+be reviewed for behavior changes, license compatibility, image architecture support, and any
+required migration notes. Security updates should be prioritized, but a green dependency-update
+pull request is not by itself proof that an update is risk-free.
+
 ## Design expectations
 
 - Preserve bounded retrieval; no MCP tool should return a complete raw document by default.
