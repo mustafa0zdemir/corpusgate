@@ -24,7 +24,7 @@ dependencies = [
   "mcp>=2.0,<3",
   "pydantic-settings>=2.10,<3",
   "python-multipart>=0.0.20,<1",
-  "sqlalchemy>=2.0.52,<2.1",
+  "sqlalchemy>=2.0.52,<2.2",
   "uvicorn[standard]>=0.35,<1",
 ]
 
