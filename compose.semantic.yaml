@@ -17,7 +17,7 @@ services:
     mem_limit: ${CORPUSGATE_SEMANTIC_MEMORY_LIMIT:-3g}
 
   qdrant:
-    image: qdrant/qdrant:v1.19.0-unprivileged
+    image: qdrant/qdrant:v1.19.2-unprivileged
     restart: unless-stopped
     expose:
       - "6333"
