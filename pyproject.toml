@@ -30,7 +30,7 @@ dependencies = [
 
 [project.optional-dependencies]
 semantic = [
-  "fastembed>=0.8,<0.9",
+  "fastembed>=0.8,<0.10",
   "qdrant-client>=1.19,<2",
 ]
 dev = [
